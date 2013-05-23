@@ -46,16 +46,40 @@ sub configure
    $self->SUPER::configure( %args );
 }
 
+# Turn non-2xx results into errors
+sub _do_request
+{
+   my $self = shift;
+   my ( $request, %args ) = @_;
+
+   $self->{http}->do_request( request => $request, %args )->and_then( sub {
+      my $f = shift;
+      my $resp = $f->get;
+
+      my $code = $resp->code;
+      if( $code !~ m/^2/ ) {
+         my $message = $resp->message;
+         $message =~ s/\r$//; # HTTP::Response leaves the \r on this
+
+         return Future->new->die(
+            "$code $message on " . $request->method . " ". $request->uri->path,
+            $request,
+            $resp,
+         );
+      }
+
+      return $f;
+   });
+}
+
+# Convert response into an XML XPathContext tree
 sub _do_request_xpc
 {
    my $self = shift;
    my ( $request ) = @_;
 
-   $self->{http}->do_request( request => $request )->then( sub {
+   $self->_do_request( $request )->then( sub {
       my $resp = shift;
-      if( $resp->code !~ m/^2/ ) {
-         return Future->new->fail( $resp->code, $resp->message ) # todo
-      }
 
       my $xpc = XML::LibXML::XPathContext->new( $libxml->parse_string( $resp->content ) );
       $xpc->registerNs( s3 => "http://s3.amazonaws.com/doc/2006-03-01/" );
@@ -119,7 +143,7 @@ sub get_object
 
    my $get_f;
    if( $on_chunk ) {
-      $get_f = $self->{http}->do_request( request => $request,
+      $get_f = $self->_do_request( $request,
          on_header => sub {
             my ( $header ) = @_;
             my $code = $header->code;
@@ -132,15 +156,11 @@ sub get_object
       );
    }
    else {
-      $get_f = $self->{http}->do_request( request => $request );
+      $get_f = $self->_do_request( $request );
    }
 
    return $get_f->then( sub {
       my $resp = shift;
-      if( $resp->code !~ m/^2/ ) {
-         return Future->new->fail( $resp->code, $resp->message ) # todo
-      }
-
       return Future->new->done( $resp->content );
    } );
 }
@@ -164,15 +184,10 @@ sub put_object
    $request->content_length( $content_length );
    $request->content( "" );
 
-   $self->{http}->do_request(
-      request      => $request,
+   $self->_do_request( $request,
       request_body => $request_body,
    )->then( sub {
       my $resp = shift;
-      if( $resp->code !~ m/^2/ ) {
-         return Future->new->fail( $resp->code, $resp->message ) # todo
-      }
-
       return Future->new->done( {
          ETag => $resp->header( "ETag" ),
       } );
