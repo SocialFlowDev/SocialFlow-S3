@@ -7,8 +7,11 @@ use feature qw( say switch );
 use YAML qw( LoadFile );
 use Net::Async::AmazonS3::FSLike;
 use IO::Async::Loop;
+use IO::Async::Timer::Periodic;
 use Future;
 use Getopt::Long;
+use POSIX qw( ceil );
+use Time::HiRes qw( time );
 
 my $config = LoadFile( "etc/sfs3.conf" );
 
@@ -18,6 +21,12 @@ my $s3 = Net::Async::AmazonS3::FSLike->new(
    secret_key => $config->{secret_key},
 );
 $loop->add( $s3 );
+
+my $every_second_tick = IO::Async::Timer::Periodic->new(
+   on_tick => sub {},
+   interval => 1,
+);
+$loop->add( $every_second_tick );
 
 ## main
 given( shift @ARGV ) {
@@ -55,7 +64,7 @@ given( shift @ARGV ) {
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // $s3path;
 
-      my ( $fh, $len_so_far, $len_total );
+      my ( $fh, $len_so_far, $len_total, $start_time );
       $s3->get_file(
          bucket => $config->{bucket},
          path   => $s3path,
@@ -66,14 +75,27 @@ given( shift @ARGV ) {
                open $fh, ">", $localpath or die "Cannot write $localpath - $!";
                $len_so_far = 0;
                $len_total = $header->content_length;
+
+               $start_time = time;
+               $every_second_tick->configure(
+                  on_tick => sub {
+                     my $now = time;
+                     my $rate = $len_so_far / ( $now - $start_time );
+                     my $eta = ( $len_total - $len_so_far ) / $rate;
+                     printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
+                        100 * $len_so_far / $len_total, $len_so_far, $len_total,
+                        $rate / 1000, ceil( $eta );
+                  },
+               );
+               $every_second_tick->start;
             }
 
             $fh->print( $chunk );
             $len_so_far += length $chunk;
-
-            # TODO: This needs to be much better
-            printf "Done %.2f%% (%d of %d)\n", 100 * $len_so_far / $len_total, $len_so_far, $len_total;
          },
       )->get;
+
+      # Cheating
+      $every_second_tick->invoke_event( on_tick => );
    }
 }
