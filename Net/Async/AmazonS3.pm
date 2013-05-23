@@ -106,13 +106,33 @@ sub get_object
    my $self = shift;
    my %args = @_;
 
+   my $on_chunk = delete $args{on_chunk};
+
    my $request = Net::Amazon::S3::Request::GetObject->new({
       %args,
       s3 => $self->{s3},
       method => "GET",
    })->http_request;
 
-   $self->{http}->do_request( request => $request )->then( sub {
+   my $get_f;
+   if( $on_chunk ) {
+      $get_f = $self->{http}->do_request( request => $request,
+         on_header => sub {
+            my ( $header ) = @_;
+            my $code = $header->code;
+
+            return sub {
+               return $on_chunk->( @_ ) if @_ and $code == 200;
+               return $header; # with no body content
+            },
+         }
+      );
+   }
+   else {
+      $get_f = $self->{http}->do_request( request => $request );
+   }
+
+   return $get_f->then( sub {
       my $resp = shift;
       if( $resp->code !~ m/^2/ ) {
          return Future->new->fail( $resp->code, $resp->message ) # todo

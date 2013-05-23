@@ -30,10 +30,12 @@ given( shift @ARGV ) {
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;
-      my $content = $s3->get_file(
+      $s3->get_file(
          bucket => $config->{bucket},
          path   => $s3path,
+         on_chunk => sub {
+            print $_[0];
+         },
       )->get;
-      print $content;
    }
 }
