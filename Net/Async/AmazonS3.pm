@@ -122,7 +122,7 @@ sub get_object
             my $code = $header->code;
 
             return sub {
-               return $on_chunk->( @_ ) if @_ and $code == 200;
+               return $on_chunk->( $header, @_ ) if @_ and $code == 200;
                return $header; # with no body content
             },
          }

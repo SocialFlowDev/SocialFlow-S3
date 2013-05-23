@@ -34,7 +34,8 @@ given( shift @ARGV ) {
          bucket => $config->{bucket},
          path   => $s3path,
          on_chunk => sub {
-            print $_[0];
+            my ( $header, $chunk ) = @_;
+            print $chunk;
          },
       )->get;
    }
