@@ -46,6 +46,8 @@ sub put_file
    $self->put_object(
       key => $path,
       value => delete $args{content},
+      gen_value => delete $args{gen_content},
+      value_length => delete $args{content_length},
       %args,
    );
 }

@@ -113,21 +113,22 @@ given( shift @ARGV ) {
 
       die "TODO: Should use multipart upload" if $len_total > 100 * 1024*1024;
 
-      my $content = "";
       my $md5ctx = Digest::MD5->new;
-      while( !eof $fh ) {
-         read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
-
-         $content .= $chunk;
-         $md5ctx->add( $chunk );
-      }
-      close $fh;
 
       my $result = $s3->put_file(
          bucket => $config->{bucket},
          path   => $s3path,
-         content => $content,
+         content_length => $len_total,
+         gen_content => sub {
+            return undef if eof $fh;
+
+            read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
+            $md5ctx->add( $chunk );
+            return $chunk;
+         },
       )->get;
+
+      close $fh;
 
       ( my $got_md5 = $result->{ETag} ) =~ s/^"|"$//g;
       my $expect_md5 = $md5ctx->hexdigest;

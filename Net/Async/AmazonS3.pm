@@ -4,6 +4,8 @@ use strict;
 use warnings;
 use base qw( IO::Async::Notifier );
 
+use Carp;
+
 use Net::Amazon::S3;
 use Net::Amazon::S3::Request::GetObject;
 use Net::Amazon::S3::Request::ListBucket;
@@ -148,12 +150,24 @@ sub put_object
    my $self = shift;
    my %args = @_;
 
+   my $content_length = delete $args{value_length} // length $args{value};
+   defined $content_length or croak "Require value_length or value";
+
+   my $request_body = delete $args{gen_value} || delete $args{value};
+
    my $request = Net::Amazon::S3::Request::PutObject->new({
       %args,
+      value => "", # Doesn't matter, it'll be ignored
       s3 => $self->{s3},
    })->http_request;
 
-   $self->{http}->do_request( request => $request )->then( sub {
+   $request->content_length( $content_length );
+   $request->content( "" );
+
+   $self->{http}->do_request(
+      request      => $request,
+      request_body => $request_body,
+   )->then( sub {
       my $resp = shift;
       if( $resp->code !~ m/^2/ ) {
          return Future->new->fail( $resp->code, $resp->message ) # todo
