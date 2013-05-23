@@ -9,14 +9,15 @@ sub list_dir
    my $self = shift;
    my %args = @_;
 
-   my $path = $args{path} // "";
+   my $path = delete $args{path} // "";
    $path =~ s{/$}{};
 
    $path .= "/" if length $path;
 
    $self->list_bucket(
       %args,
-      prefix => $path,
+      delimiter => "/",
+      prefix    => $path,
    );
 }
 

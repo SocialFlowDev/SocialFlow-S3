@@ -67,11 +67,9 @@ sub list_bucket
    my %args = @_;
 
    my $req = Net::Amazon::S3::Request::ListBucket->new(
-      s3        => $self->{s3},
-      bucket    => $args{bucket},
-      delimiter => "/",
-      max_keys  => 100, # TODO
-      prefix    => $args{prefix},
+      %args,
+      s3       => $self->{s3},
+      max_keys => 100, # TODO
    )->http_request;
 
    $self->_do_request( $req )->then( sub {
