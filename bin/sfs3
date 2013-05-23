@@ -9,7 +9,6 @@ use Net::Async::AmazonS3::FSLike;
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 
-use Digest::MD5;
 use File::Basename qw( basename );
 use Future;
 use Getopt::Long;
@@ -116,7 +115,6 @@ given( shift @ARGV ) {
 
       die "TODO: Should use multipart upload" if $len_total > 100 * 1024*1024;
 
-      my $md5ctx = Digest::MD5->new;
       my $len_so_far = 0;
 
       start_progress( $len_total, \$len_so_far );
@@ -130,23 +128,11 @@ given( shift @ARGV ) {
             my $len = read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
             $len_so_far += $len;
 
-            $md5ctx->add( $chunk );
             return $chunk;
          },
       )->get;
 
       close $fh;
-
-      ( my $got_md5 = $result->{ETag} ) =~ s/^"|"$//g;
-      my $expect_md5 = $md5ctx->hexdigest;
-
-      if( $got_md5 ne $expect_md5 ) {
-         print STDERR "Got result ETag $result->{ETag}\n";
-         print STDERR "Was expecting MD5sum $expect_md5\n";
-
-         print STDERR "Failed to put $localpath to $s3path\n";
-         exit 1;
-      }
 
       print "Successfully put $localpath to $s3path\n";
    }

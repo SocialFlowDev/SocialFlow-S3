@@ -11,6 +11,7 @@ use Net::Amazon::S3::Request::GetObject;
 use Net::Amazon::S3::Request::ListBucket;
 use XML::LibXML;
 use XML::LibXML::XPathContext;
+use Digest::MD5;
 
 my $libxml = XML::LibXML->new;
 
@@ -173,7 +174,8 @@ sub put_object
    my $content_length = delete $args{value_length} // length $args{value};
    defined $content_length or croak "Require value_length or value";
 
-   my $request_body = delete $args{gen_value} || delete $args{value};
+   my $gen_value = delete $args{gen_value};
+   my $value     = delete $args{value};
 
    my $request = Net::Amazon::S3::Request::PutObject->new({
       %args,
@@ -184,13 +186,34 @@ sub put_object
    $request->content_length( $content_length );
    $request->content( "" );
 
+   my $md5ctx = Digest::MD5->new;
+
    $self->_do_request( $request,
-      request_body => $request_body,
+      request_body => sub {
+         return undef if !$gen_value and !length $value;
+         my $chunk = $gen_value ? $gen_value->() : substr( $value, 0, 64*1024, "" );
+         return undef if !defined $chunk;
+
+         $md5ctx->add( $chunk );
+         return $chunk;
+      },
    )->then( sub {
       my $resp = shift;
-      return Future->new->done( {
-         ETag => $resp->header( "ETag" ),
-      } );
+
+      my $etag = $resp->header( "ETag" );
+      # Amazon S3 currently documents that the returned ETag header will be
+      # the MD5 hash of the content, surrounded in quote marks. We'd better
+      # hope this continues to be true... :/
+      my ( $got_md5 ) = $etag =~ m/^"([0-9a-f]{32})"$/ or
+         return Future->new->die( "Returned ETag ($etag) does not look like an MD5 sum", $resp );
+
+      my $expect_md5 = $md5ctx->hexdigest;
+
+      if( $got_md5 ne $expect_md5 ) {
+         return Future->new->die( "Returned MD5 hash ($got_md5) did not match expected ($expect_md5)", $resp );
+      }
+
+      return Future->new->done( $got_md5 );
    });
 }
 
