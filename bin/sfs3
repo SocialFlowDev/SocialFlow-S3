@@ -26,11 +26,26 @@ my $s3 = Net::Async::AmazonS3::FSLike->new(
 );
 $loop->add( $s3 );
 
-my $every_second_tick = IO::Async::Timer::Periodic->new(
-   on_tick => sub {},
-   interval => 1,
-);
-$loop->add( $every_second_tick );
+sub start_progress
+{
+   my ( $len_total, $len_so_far_ref ) = @_;
+
+   my $start_time = time;
+
+   my $timer = IO::Async::Timer::Periodic->new(
+      on_tick => sub {
+         my $now = time;
+         my $rate = $$len_so_far_ref / ( $now - $start_time );
+         my $eta = ( $len_total - $$len_so_far_ref ) / $rate;
+
+         printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
+            100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total,
+            $rate / 1000, ceil( $eta );
+      },
+      interval => 1,
+   );
+   $loop->add( $timer->start );
+}
 
 ## main
 given( shift @ARGV ) {
@@ -68,7 +83,7 @@ given( shift @ARGV ) {
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // $s3path;
 
-      my ( $fh, $len_so_far, $len_total, $start_time );
+      my ( $fh, $len_so_far );
       $s3->get_file(
          bucket => $config->{bucket},
          path   => $s3path,
@@ -78,20 +93,9 @@ given( shift @ARGV ) {
             if( !$fh ) {
                open $fh, ">", $localpath or die "Cannot write $localpath - $!";
                $len_so_far = 0;
-               $len_total = $header->content_length;
+               my $len_total = $header->content_length;
 
-               $start_time = time;
-               $every_second_tick->configure(
-                  on_tick => sub {
-                     my $now = time;
-                     my $rate = $len_so_far / ( $now - $start_time );
-                     my $eta = ( $len_total - $len_so_far ) / $rate;
-                     printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
-                        100 * $len_so_far / $len_total, $len_so_far, $len_total,
-                        $rate / 1000, ceil( $eta );
-                  },
-               );
-               $every_second_tick->start;
+               start_progress( $len_total, \$len_so_far );
             }
 
             $fh->print( $chunk );
@@ -99,8 +103,7 @@ given( shift @ARGV ) {
          },
       )->get;
 
-      # Cheating
-      $every_second_tick->invoke_event( on_tick => );
+      print "Successfully got $s3path to $localpath\n";
    }
    when( "put" ) {
       # TODO: Handle multiparts
@@ -114,7 +117,9 @@ given( shift @ARGV ) {
       die "TODO: Should use multipart upload" if $len_total > 100 * 1024*1024;
 
       my $md5ctx = Digest::MD5->new;
+      my $len_so_far = 0;
 
+      start_progress( $len_total, \$len_so_far );
       my $result = $s3->put_file(
          bucket => $config->{bucket},
          path   => $s3path,
@@ -122,7 +127,9 @@ given( shift @ARGV ) {
          gen_content => sub {
             return undef if eof $fh;
 
-            read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
+            my $len = read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
+            $len_so_far += $len;
+
             $md5ctx->add( $chunk );
             return $chunk;
          },
