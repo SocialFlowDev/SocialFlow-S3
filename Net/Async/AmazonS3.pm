@@ -5,6 +5,7 @@ use warnings;
 use base qw( IO::Async::Notifier );
 
 use Net::Amazon::S3;
+use Net::Amazon::S3::Request::GetObject;
 use Net::Amazon::S3::Request::ListBucket;
 use XML::LibXML;
 use XML::LibXML::XPathContext;
@@ -43,7 +44,7 @@ sub configure
    $self->SUPER::configure( %args );
 }
 
-sub _do_request
+sub _do_request_xpc
 {
    my $self = shift;
    my ( $request ) = @_;
@@ -72,7 +73,7 @@ sub list_bucket
       max_keys => 100, # TODO
    )->http_request;
 
-   $self->_do_request( $req )->then( sub {
+   $self->_do_request_xpc( $req )->then( sub {
       my $xpc = shift;
 
       my @files;
@@ -98,6 +99,27 @@ sub list_bucket
 
       return Future->new->done( @files, @dirs );
    });
+}
+
+sub get_object
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $request = Net::Amazon::S3::Request::GetObject->new({
+      %args,
+      s3 => $self->{s3},
+      method => "GET",
+   })->http_request;
+
+   $self->{http}->do_request( request => $request )->then( sub {
+      my $resp = shift;
+      if( $resp->code !~ m/^2/ ) {
+         return Future->new->fail( $resp->code, $resp->message ) # todo
+      }
+
+      return Future->new->done( $resp->content );
+   } );
 }
 
 0x55AA;

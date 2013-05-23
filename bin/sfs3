@@ -21,11 +21,19 @@ $loop->add( $s3 );
 ## main
 given( shift @ARGV ) {
    when( "ls" ) {
-      my $path = shift @ARGV;
+      my $s3path = shift @ARGV;
       my @content = $s3->list_dir(
          bucket => $config->{bucket},
-         path   => $path,
+         path   => $s3path,
       )->get;
       say "$_->{type} $_->{name}" for @content;
+   }
+   when( "cat" ) {
+      my $s3path = shift @ARGV;
+      my $content = $s3->get_file(
+         bucket => $config->{bucket},
+         path   => $s3path,
+      )->get;
+      print $content;
    }
 }

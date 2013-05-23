@@ -21,4 +21,15 @@ sub list_dir
    );
 }
 
+sub get_file
+{
+   my $self = shift;
+   my %args = @_;
+
+   $self->get_object(
+      key => delete $args{path},
+      %args,
+   );
+}
+
 0x55AA;
