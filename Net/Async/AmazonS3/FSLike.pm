@@ -26,8 +26,26 @@ sub get_file
    my $self = shift;
    my %args = @_;
 
+   my $path = delete $args{path};
+   $path =~ s{//+}{/};
+
    $self->get_object(
-      key => delete $args{path},
+      key => $path,
+      %args,
+   );
+}
+
+sub put_file
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $path = delete $args{path};
+   $path =~ s{//+}{/};
+
+   $self->put_object(
+      key => $path,
+      value => delete $args{content},
       %args,
    );
 }

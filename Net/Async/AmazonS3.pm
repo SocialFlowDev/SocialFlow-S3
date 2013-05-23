@@ -143,4 +143,26 @@ sub get_object
    } );
 }
 
+sub put_object
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $request = Net::Amazon::S3::Request::PutObject->new({
+      %args,
+      s3 => $self->{s3},
+   })->http_request;
+
+   $self->{http}->do_request( request => $request )->then( sub {
+      my $resp = shift;
+      if( $resp->code !~ m/^2/ ) {
+         return Future->new->fail( $resp->code, $resp->message ) # todo
+      }
+
+      return Future->new->done( {
+         ETag => $resp->header( "ETag" ),
+      } );
+   });
+}
+
 0x55AA;
