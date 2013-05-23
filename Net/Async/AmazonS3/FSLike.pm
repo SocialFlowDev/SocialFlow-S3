@@ -12,7 +12,7 @@ sub list_dir
    my $path = $args{path} // "";
    $path =~ s{/$}{};
 
-   my $path_re = qr/^\Q$path\E\//;
+   my $path_re = length $path ? qr/^\Q$path\E(?:$|\/)/ : qr/./;
 
    $self->list_bucket(
       %args,
