@@ -1,0 +1,23 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use feature qw( say );
+
+use YAML qw( LoadFile );
+use Net::Async::AmazonS3;
+use IO::Async::Loop;
+use Future;
+
+my $config = LoadFile( "etc/sfs3.conf" );
+
+my $loop = IO::Async::Loop->new;
+my $s3 = Net::Async::AmazonS3->new(
+   access_key => $config->{access_key},
+   secret_key => $config->{secret_key},
+);
+$loop->add( $s3 );
+
+## main
+my @content = $s3->list_bucket( $config->{bucket} )->get;
+say "$_->{type} $_->{name}" for @content;
