@@ -39,4 +39,29 @@ given( shift @ARGV ) {
          },
       )->get;
    }
+   when( "get" ) {
+      my $s3path = shift @ARGV;
+      my $localpath = shift @ARGV // $s3path;
+
+      my ( $fh, $len_so_far, $len_total );
+      $s3->get_file(
+         bucket => $config->{bucket},
+         path   => $s3path,
+         on_chunk => sub {
+            my ( $header, $chunk ) = @_;
+
+            if( !$fh ) {
+               open $fh, ">", $localpath or die "Cannot write $localpath - $!";
+               $len_so_far = 0;
+               $len_total = $header->content_length;
+            }
+
+            $fh->print( $chunk );
+            $len_so_far += length $chunk;
+
+            # TODO: This needs to be much better
+            printf "Done %.2f%% (%d of %d)\n", 100 * $len_so_far / $len_total, $len_so_far, $len_total;
+         },
+      )->get;
+   }
 }
