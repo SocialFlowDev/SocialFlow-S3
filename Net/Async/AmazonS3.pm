@@ -64,14 +64,16 @@ sub _do_request
 sub list_bucket
 {
    my $self = shift;
-   my ( $bucket ) = @_;
+   my %args = @_;
+
+   my $while_marker = $args{while_marker} || qr//; # All
 
    my $req = Net::Amazon::S3::Request::ListBucket->new(
       s3        => $self->{s3},
-      bucket    => $bucket,
+      bucket    => $args{bucket},
       delimiter => "/",
       max_keys  => 100, # TODO
-      # marker    => prev_marker # TODO
+      marker    => $args{marker},
    )->http_request;
 
    $self->_do_request( $req )->then( sub {
@@ -79,6 +81,9 @@ sub list_bucket
 
       my @files;
       foreach my $node ( $xpc->findnodes( ".//s3:Contents" ) ) {
+         my $name = $xpc->findvalue( ".//s3:Key", $node );
+         last unless $name =~ $while_marker;
+
          push @files, {
             name => $xpc->findvalue( ".//s3:Key", $node ),
             type => "F",
@@ -88,6 +93,9 @@ sub list_bucket
 
       my @dirs;
       foreach my $node ( $xpc->findnodes( ".//s3:CommonPrefixes" ) ) {
+         my $name = $xpc->findvalue( ".//s3:Prefix", $node );
+         last unless $name =~ $while_marker;
+
          push @dirs, {
             name => $xpc->findvalue( ".//s3:Prefix", $node ),
             type => "D",
