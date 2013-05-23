@@ -81,9 +81,10 @@ sub list_bucket
          my $name = $xpc->findvalue( ".//s3:Key", $node );
 
          push @files, {
-            name => $xpc->findvalue( ".//s3:Key", $node ),
-            type => "F",
-            size => $xpc->findvalue( ".//s3:Size", $node ),
+            name          => $xpc->findvalue( ".//s3:Key", $node ),
+            type          => "F",
+            size          => $xpc->findvalue( ".//s3:Size", $node ),
+            last_modified => $xpc->findvalue( ".//s3:LastModified", $node ),
          };
       }
 

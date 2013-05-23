@@ -8,6 +8,7 @@ use YAML qw( LoadFile );
 use Net::Async::AmazonS3::FSLike;
 use IO::Async::Loop;
 use Future;
+use Getopt::Long;
 
 my $config = LoadFile( "etc/sfs3.conf" );
 
@@ -21,12 +22,23 @@ $loop->add( $s3 );
 ## main
 given( shift @ARGV ) {
    when( "ls" ) {
+      GetOptions(
+         'l|long' => \my $LONG,
+      );
       my $s3path = shift @ARGV;
       my @content = $s3->list_dir(
          bucket => $config->{bucket},
          path   => $s3path,
       )->get;
-      say "$_->{type} $_->{name}" for @content;
+
+      foreach my $e ( @content ) {
+         if( $LONG and $e->{type} eq "F" ) {
+            printf "%s %-36s %15d %s\n", $e->{type}, $e->{name}, $e->{size}, $e->{last_modified};
+         }
+         else {
+            printf "%s %s\n", $e->{type}, $e->{name};
+         }
+      }
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;
