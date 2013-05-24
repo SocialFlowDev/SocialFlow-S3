@@ -6,12 +6,13 @@ use base qw( IO::Async::Notifier );
 
 use Carp;
 
-use Net::Amazon::S3;
-use Net::Amazon::S3::HTTPRequest;
 use XML::LibXML;
 use XML::LibXML::XPathContext;
 use Digest::MD5;
+use Digest::HMAC_SHA1;
 use URI::Escape qw( uri_escape_utf8 );
+use HTTP::Date qw( time2str );
+use MIME::Base64 qw( encode_base64 );
 
 my $libxml = XML::LibXML->new;
 
@@ -39,11 +40,6 @@ sub configure
       defined $args{$_} and $self->{$_} = delete $args{$_};
    }
 
-   $self->{s3} = Net::Amazon::S3->new({
-      aws_access_key_id     => $self->{access_key},
-      aws_secret_access_key => $self->{secret_key},
-   });
-
    $self->SUPER::configure( %args );
 }
 
@@ -52,9 +48,8 @@ sub _make_request
    my $self = shift;
    my %args = @_;
 
-   my $path = $args{path};
+   my $method = $args{method};
 
-   # TODO: This can be neater in plain HTTP::Message
    my @params;
    foreach my $key ( keys %{ $args{query_params} } ) {
       next unless defined( my $value = $args{query_params}->{$key} );
@@ -62,14 +57,61 @@ sub _make_request
       push @params, $key . "=" . uri_escape_utf8( $value, "^A-Za-z0-9_-" );
    }
 
-   $path .= "?" . join( "&", @params ) if @params;
+   my $bucket = $args{bucket};
+   my $path   = $args{path};
 
-   return Net::Amazon::S3::HTTPRequest->new(
-      s3      => $self->{s3},
-      method  => $args{method},
-      path    => $path,
-      ( exists $args{content} ? ( content => $args{content} ) : () ),
-   )->http_request;
+   my $uri;
+   # TODO: https?
+   if( 1 ) { # TODO: sanity-check bucket
+      $uri = "http://$bucket.s3.amazonaws.com/$path";
+   }
+   else {
+      $uri = "http://s3.amazonaws.com/$bucket/$path";
+   }
+   $uri .= "?" . join( "&", @params ) if @params;
+
+   my $s3 = $self->{s3};
+
+   my @headers = (
+      Date => time2str( time ),
+   );
+
+   my $request = HTTP::Request->new( $method, $uri, \@headers, $args{content} );
+
+   $self->_gen_auth_header( $request, $bucket, $path );
+
+   return $request;
+}
+
+sub _gen_auth_header
+{
+   my $self = shift;
+   my ( $request, $bucket, $path ) = @_;
+
+   # See also
+   #   http://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html#ConstructingTheAuthenticationHeader
+
+   my $canon_resource = "/$bucket/$path";
+
+   my $buffer = join( "\n",
+      $request->method,
+      $request->header( "Content-MD5" ) // "",
+      $request->header( "Content-Type" ) // "",
+      $request->header( "Date" ) // "",
+      # No AMZ headers
+      $canon_resource );
+
+   my $s3 = $self->{s3};
+
+   my $hmac = Digest::HMAC_SHA1->new( $self->{secret_key} );
+   $hmac->add( $buffer );
+
+   my $access_key = $self->{access_key};
+   my $authkey = encode_base64( $hmac->digest );
+   # Trim the trailing \n
+   $authkey =~ s/\n$//;
+
+   $request->header( Authorization => "AWS $access_key:$authkey" );
 }
 
 # Turn non-2xx results into errors
@@ -121,7 +163,8 @@ sub list_bucket
 
    my $req = $self->_make_request(
       method       => "GET",
-      path         => $args{bucket} . "/",
+      bucket       => $args{bucket},
+      path         => "",
       query_params => {
          prefix       => $args{prefix},
          delimiter    => $args{delimiter},
@@ -167,7 +210,8 @@ sub get_object
 
    my $request = $self->_make_request(
       method => "GET",
-      path   => "$args{bucket}/$args{key}",
+      bucket => $args{bucket},
+      path   => $args{key},
    );
 
    my $get_f;
@@ -207,7 +251,8 @@ sub put_object
 
    my $request = $self->_make_request(
       method  => "PUT",
-      path    => "$args{bucket}/$args{key}",
+      bucket  => $args{bucket},
+      path    => $args{key},
       content => "", # Doesn't matter, it'll be ignored
    );
 
