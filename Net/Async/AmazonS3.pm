@@ -7,11 +7,11 @@ use base qw( IO::Async::Notifier );
 use Carp;
 
 use Net::Amazon::S3;
-use Net::Amazon::S3::Request::GetObject;
-use Net::Amazon::S3::Request::ListBucket;
+use Net::Amazon::S3::HTTPRequest;
 use XML::LibXML;
 use XML::LibXML::XPathContext;
 use Digest::MD5;
+use URI::Escape qw( uri_escape_utf8 );
 
 my $libxml = XML::LibXML->new;
 
@@ -45,6 +45,31 @@ sub configure
    });
 
    $self->SUPER::configure( %args );
+}
+
+sub _make_request
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $path = $args{path};
+
+   # TODO: This can be neater in plain HTTP::Message
+   my @params;
+   foreach my $key ( keys %{ $args{query_params} } ) {
+      next unless defined( my $value = $args{query_params}->{$key} );
+      $key =~ s/_/-/g;
+      push @params, $key . "=" . uri_escape_utf8( $value, "^A-Za-z0-9_-" );
+   }
+
+   $path .= "?" . join( "&", @params ) if @params;
+
+   return Net::Amazon::S3::HTTPRequest->new(
+      s3      => $self->{s3},
+      method  => $args{method},
+      path    => $path,
+      ( exists $args{content} ? ( content => $args{content} ) : () ),
+   )->http_request;
 }
 
 # Turn non-2xx results into errors
@@ -94,11 +119,15 @@ sub list_bucket
    my $self = shift;
    my %args = @_;
 
-   my $req = Net::Amazon::S3::Request::ListBucket->new(
-      %args,
-      s3       => $self->{s3},
-      max_keys => 100, # TODO
-   )->http_request;
+   my $req = $self->_make_request(
+      method       => "GET",
+      path         => $args{bucket} . "/",
+      query_params => {
+         prefix       => $args{prefix},
+         delimiter    => $args{delimiter},
+         max_keys     => 100, # TODO
+      },
+   );
 
    $self->_do_request_xpc( $req )->then( sub {
       my $xpc = shift;
@@ -136,11 +165,10 @@ sub get_object
 
    my $on_chunk = delete $args{on_chunk};
 
-   my $request = Net::Amazon::S3::Request::GetObject->new({
-      %args,
-      s3 => $self->{s3},
+   my $request = $self->_make_request(
       method => "GET",
-   })->http_request;
+      path   => "$args{bucket}/$args{key}",
+   );
 
    my $get_f;
    if( $on_chunk ) {
@@ -177,11 +205,11 @@ sub put_object
    my $gen_value = delete $args{gen_value};
    my $value     = delete $args{value};
 
-   my $request = Net::Amazon::S3::Request::PutObject->new({
-      %args,
-      value => "", # Doesn't matter, it'll be ignored
-      s3 => $self->{s3},
-   })->http_request;
+   my $request = $self->_make_request(
+      method  => "PUT",
+      path    => "$args{bucket}/$args{key}",
+      content => "", # Doesn't matter, it'll be ignored
+   );
 
    $request->content_length( $content_length );
    $request->content( "" );
