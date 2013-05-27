@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use feature qw( say switch );
 
-use Net::Async::AmazonS3::FSLike;
+use Net::Async::Webservice::S3;
 
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
@@ -19,7 +19,7 @@ use YAML qw( LoadFile );
 my $config = LoadFile( "etc/sfs3.conf" );
 
 my $loop = IO::Async::Loop->new;
-my $s3 = Net::Async::AmazonS3::FSLike->new(
+my $s3 = Net::Async::Webservice::S3->new(
    access_key => $config->{access_key},
    secret_key => $config->{secret_key},
 );
@@ -53,25 +53,30 @@ given( shift @ARGV ) {
          'l|long' => \my $LONG,
       );
       my $s3path = shift @ARGV;
-      my @content = $s3->list_dir(
+      my ( $keys, $prefixes ) = $s3->list_bucket(
          bucket => $config->{bucket},
-         path   => $s3path,
+         prefix => $s3path,
+         delimiter => "/",
       )->get;
 
-      foreach my $e ( @content ) {
-         if( $LONG and $e->{type} eq "F" ) {
-            printf "%s %-36s %15d %s\n", $e->{type}, $e->{name}, $e->{size}, $e->{last_modified};
+      foreach my $e ( @$keys ) {
+         if( $LONG ) {
+            printf "%-38s %15d %s\n", $e->{key}, $e->{size}, $e->{last_modified};
          }
          else {
-            printf "%s %s\n", $e->{type}, $e->{name};
+            printf "%-38s\n", $e->{key};
          }
+      }
+
+      foreach my $name ( @$prefixes ) {
+         printf "%-38s DIR\n", $name;
       }
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;
-      $s3->get_file(
+      $s3->get_object(
          bucket => $config->{bucket},
-         path   => $s3path,
+         key    => $s3path,
          on_chunk => sub {
             my ( $header, $chunk ) = @_;
             print $chunk;
@@ -83,9 +88,9 @@ given( shift @ARGV ) {
       my $localpath = shift @ARGV // $s3path;
 
       my ( $fh, $len_so_far );
-      $s3->get_file(
+      $s3->get_object(
          bucket => $config->{bucket},
-         path   => $s3path,
+         key    => $s3path,
          on_chunk => sub {
             my ( $header, $chunk ) = @_;
 
@@ -118,11 +123,11 @@ given( shift @ARGV ) {
       my $len_so_far = 0;
 
       start_progress( $len_total, \$len_so_far );
-      my $result = $s3->put_file(
+      my $result = $s3->put_object(
          bucket => $config->{bucket},
-         path   => $s3path,
-         content_length => $len_total,
-         gen_content => sub {
+         key    => $s3path,
+         value_length => $len_total,
+         gen_value => sub {
             return undef if eof $fh;
 
             my $len = read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
