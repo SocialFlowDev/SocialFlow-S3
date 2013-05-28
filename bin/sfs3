@@ -4,11 +4,12 @@ use strict;
 use warnings;
 use feature qw( say switch );
 
-use Net::Async::Webservice::S3;
+use Net::Async::Webservice::S3 0.02;
 
 use IO::Async::Loop;
 use IO::Async::Timer::Periodic;
 
+use Fcntl qw( SEEK_SET );
 use File::Basename qw( basename );
 use Future;
 use Getopt::Long;
@@ -128,9 +129,11 @@ given( shift @ARGV ) {
          key    => $s3path,
          value_length => $len_total,
          gen_value => sub {
+            my ( $pos, $len ) = @_;
             return undef if eof $fh;
 
-            my $len = read $fh, my $chunk, 64*1024 or die "Cannot read() - $!";
+            seek( $fh, SEEK_SET, $pos );
+            $len = read $fh, my $chunk, $len or die "Cannot read() - $!";
             $len_so_far += $len;
 
             return $chunk;
@@ -140,5 +143,12 @@ given( shift @ARGV ) {
       close $fh;
 
       print "Successfully put $localpath to $s3path\n";
+   }
+   when( "rm" ) {
+      my $s3path = shift @ARGV;
+      $s3->delete_object(
+         bucket => $config->{bucket},
+         key    => $s3path,
+      )->get;
    }
 }
