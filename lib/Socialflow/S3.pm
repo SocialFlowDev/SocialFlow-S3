@@ -62,10 +62,27 @@ sub _split_pattern
    my $prefix = join "/", @prefix;
    my $glob   = join "/", @parts;
 
+   return ( $prefix ) if !@parts;
+
    ( my $re = $glob ) =~ s{(\?)    |  (\*)     |  ([^?*]+)    }
                           {$1&&"." || $2&&".*" || quotemeta $3}xeg;
 
    return ( $prefix, qr/^$re$/ );
+}
+
+sub _expand_pattern
+{
+   my $self = shift;
+   my ( $prefix, $re ) = $self->_split_pattern( @_, 0 );
+
+   return ( $prefix ) if !$re;
+
+   my ( $keys ) = $self->{s3}->list_bucket(
+      prefix => $prefix,
+      delimiter => "/",
+   )->get;
+
+   return map { $_->{key} =~ $re ? $_->{key} : () } @$keys;
 }
 
 sub _start_progress
@@ -206,11 +223,21 @@ sub put
 sub rm
 {
    my $self = shift;
-   my ( $s3path ) = @_;
+   my ( $s3pattern ) = @_;
 
-   $self->{s3}->delete_object(
-      key    => $s3path,
-   )->get;
+   my @s3paths = $self->_expand_pattern( $s3pattern );
+   if( !@s3paths ) {
+      print STDERR "Nothing matched $s3pattern\n";
+      exit 1;
+   }
+
+   # TODO: Future concurrently
+   foreach my $s3path ( @s3paths ) {
+      $self->{s3}->delete_object(
+         key    => $s3path,
+      )->get;
+      print "Removed $s3path\n";
+   }
 }
 
 1;
