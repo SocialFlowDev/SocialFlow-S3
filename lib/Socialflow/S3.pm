@@ -57,7 +57,7 @@ sub _split_pattern
 
    die "TODO: Directory globs not yet suported" if @parts > 1;
 
-   @parts = ( pop @prefix ) if $keep_basename and !@parts;
+   @parts = ( pop @prefix ) if $keep_basename and !@parts and @prefix;
 
    my $prefix = join "/", @prefix;
    my $glob   = join "/", @parts;
@@ -114,7 +114,7 @@ sub ls
    my ( $s3pattern, %options ) = @_;
    my $LONG = $options{long};
 
-   my ( $prefix, $re ) = $self->_split_pattern( $s3pattern, 1 );
+   my ( $prefix, $re ) = $self->_split_pattern( $s3pattern // "", 1 );
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
       prefix => $prefix,
