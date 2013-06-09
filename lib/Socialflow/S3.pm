@@ -5,7 +5,7 @@ use warnings;
 use base qw( IO::Async::Notifier );
 
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.02;
+use Net::Async::Webservice::S3 0.03;
 
 use Fcntl qw( SEEK_SET );
 use POSIX qw( ceil );
@@ -30,24 +30,20 @@ sub configure
    my $self = shift;
    my %args = @_;
 
-   if( my $bucket = delete $args{bucket} ) {
-      ( $self->{bucket}, $self->{prefix} ) = split m{/}, $bucket, 2;
-   }
-
    if( my $s3 = delete $args{s3} ) {
       $self->remove_child( delete $self->{s3} ) if $self->{s3};
       $self->add_child( $self->{s3} = $s3 );
    }
 
-   $self->SUPER::configure( %args );
-}
+   if( my $bucket = delete $args{bucket} ) {
+      ( $bucket, my $prefix ) = split m{/}, $bucket, 2;
+      $self->{s3}->configure(
+         bucket => $bucket,
+         prefix => $prefix,
+      );
+   }
 
-sub _mkpath
-{
-   my $self = shift;
-   my ( $path ) = @_;
-   return $path unless defined( my $prefix = $self->{prefix} );
-   return join "/", $prefix, $path;
+   $self->SUPER::configure( %args );
 }
 
 sub _start_progress
@@ -80,8 +76,7 @@ sub ls
    my $LONG = $options{long};
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
-      bucket => $self->{bucket},
-      prefix => $self->_mkpath($s3path),
+      prefix => $s3path,
       delimiter => "/",
    )->get;
 
@@ -105,8 +100,7 @@ sub cat
    my ( $s3path ) = @_;
 
    $self->{s3}->get_object(
-      bucket => $self->{bucket},
-      key    => $self->_mkpath($s3path),
+      key    => $s3path,
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
          print $chunk;
@@ -124,8 +118,7 @@ sub get
    my $progress_timer;
 
    $self->{s3}->get_object(
-      bucket => $self->{bucket},
-      key    => $self->_mkpath($s3path),
+      key    => $s3path,
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
 
@@ -158,8 +151,7 @@ sub put
 
    my $progress_timer = $self->_start_progress( $len_total, \$len_so_far );
    my $result = $self->{s3}->put_object(
-      bucket => $self->{bucket},
-      key    => $self->_mkpath($s3path),
+      key    => $s3path,
       value_length => $len_total,
       gen_value => sub {
          my ( $pos, $len ) = @_;
@@ -186,8 +178,7 @@ sub rm
    my ( $s3path ) = @_;
 
    $self->{s3}->delete_object(
-      bucket => $self->{bucket},
-      key    => $self->_mkpath($s3path),
+      key    => $s3path,
    )->get;
 }
 
