@@ -4,48 +4,23 @@ use strict;
 use warnings;
 use feature qw( say switch );
 
-use Net::Async::Webservice::S3 0.02;
+use Socialflow::S3;
 
 use IO::Async::Loop;
-use IO::Async::Timer::Periodic;
 
-use Fcntl qw( SEEK_SET );
 use File::Basename qw( basename );
-use Future;
 use Getopt::Long;
-use POSIX qw( ceil );
-use Time::HiRes qw( time );
 use YAML qw( LoadFile );
 
 my $config = LoadFile( "etc/sfs3.conf" );
 
 my $loop = IO::Async::Loop->new;
-my $s3 = Net::Async::Webservice::S3->new(
+my $s3 = Socialflow::S3->new(
    access_key => $config->{access_key},
    secret_key => $config->{secret_key},
+   bucket     => $config->{bucket},
 );
 $loop->add( $s3 );
-
-sub start_progress
-{
-   my ( $len_total, $len_so_far_ref ) = @_;
-
-   my $start_time = time;
-
-   my $timer = IO::Async::Timer::Periodic->new(
-      on_tick => sub {
-         my $now = time;
-         my $rate = $$len_so_far_ref / ( $now - $start_time );
-         my $eta = ( $len_total - $$len_so_far_ref ) / $rate;
-
-         printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
-            100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total,
-            $rate / 1000, ceil( $eta );
-      },
-      interval => 1,
-   );
-   $loop->add( $timer->start );
-}
 
 ## main
 given( shift @ARGV ) {
@@ -54,101 +29,30 @@ given( shift @ARGV ) {
          'l|long' => \my $LONG,
       );
       my $s3path = shift @ARGV;
-      my ( $keys, $prefixes ) = $s3->list_bucket(
-         bucket => $config->{bucket},
-         prefix => $s3path,
-         delimiter => "/",
-      )->get;
 
-      foreach my $e ( @$keys ) {
-         if( $LONG ) {
-            printf "%-38s %15d %s\n", $e->{key}, $e->{size}, $e->{last_modified};
-         }
-         else {
-            printf "%-38s\n", $e->{key};
-         }
-      }
-
-      foreach my $name ( @$prefixes ) {
-         printf "%-38s DIR\n", $name;
-      }
+      $s3->ls( $s3path, long => $LONG );
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;
-      $s3->get_object(
-         bucket => $config->{bucket},
-         key    => $s3path,
-         on_chunk => sub {
-            my ( $header, $chunk ) = @_;
-            print $chunk;
-         },
-      )->get;
+
+      $s3->cat( $s3path );
    }
    when( "get" ) {
       my $s3path = shift @ARGV;
-      my $localpath = shift @ARGV // $s3path;
+      my $localpath = shift @ARGV // basename( $s3path );
 
-      my ( $fh, $len_so_far );
-      $s3->get_object(
-         bucket => $config->{bucket},
-         key    => $s3path,
-         on_chunk => sub {
-            my ( $header, $chunk ) = @_;
-
-            if( !$fh ) {
-               open $fh, ">", $localpath or die "Cannot write $localpath - $!";
-               $len_so_far = 0;
-               my $len_total = $header->content_length;
-
-               start_progress( $len_total, \$len_so_far );
-            }
-
-            $fh->print( $chunk );
-            $len_so_far += length $chunk;
-         },
-      )->get;
-
-      print "Successfully got $s3path to $localpath\n";
+      $s3->get( $s3path, $localpath );
    }
    when( "put" ) {
-      # TODO: Handle multiparts
       my $localpath = shift @ARGV;
       my $s3path = shift @ARGV;
       $s3path .= basename( $localpath ) if $s3path =~ m{/$};
 
-      open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
-      my $len_total = -s $fh;
-
-      die "TODO: Should use multipart upload" if $len_total > 100 * 1024*1024;
-
-      my $len_so_far = 0;
-
-      start_progress( $len_total, \$len_so_far );
-      my $result = $s3->put_object(
-         bucket => $config->{bucket},
-         key    => $s3path,
-         value_length => $len_total,
-         gen_value => sub {
-            my ( $pos, $len ) = @_;
-            return undef if eof $fh;
-
-            seek( $fh, SEEK_SET, $pos );
-            $len = read $fh, my $chunk, $len or die "Cannot read() - $!";
-            $len_so_far += $len;
-
-            return $chunk;
-         },
-      )->get;
-
-      close $fh;
-
-      print "Successfully put $localpath to $s3path\n";
+      $s3->put( $localpath, $s3path );
    }
    when( "rm" ) {
       my $s3path = shift @ARGV;
-      $s3->delete_object(
-         bucket => $config->{bucket},
-         key    => $s3path,
-      )->get;
+
+      $s3->rm( $s3path );
    }
 }
