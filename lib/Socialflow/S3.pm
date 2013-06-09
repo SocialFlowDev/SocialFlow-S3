@@ -80,17 +80,22 @@ sub ls
       delimiter => "/",
    )->get;
 
-   foreach my $e ( @$keys ) {
-      if( $LONG ) {
-         printf "%-38s %15d %s\n", $e->{key}, $e->{size}, $e->{last_modified};
-      }
-      else {
-         printf "%-38s\n", $e->{key};
-      }
-   }
+   while( @$keys or @$prefixes ) {
+      if( !@$prefixes or @$keys and $keys->[0]{key} lt $prefixes->[0] ) {
+         my $e = shift @$keys;
 
-   foreach my $name ( @$prefixes ) {
-      printf "%-38s DIR\n", $name;
+         if( $LONG ) {
+            printf "%-38s %15d %s\n", $e->{key}, $e->{size}, $e->{last_modified};
+         }
+         else {
+            printf "%-38s\n", $e->{key};
+         }
+      }
+      elsif( !@$keys or @$prefixes and $prefixes->[0] lt $keys->[0]{key} ) {
+         my $name = shift @$prefixes;
+
+         printf "%-38s DIR\n", $name;
+      }
    }
 }
 
