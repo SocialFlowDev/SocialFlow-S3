@@ -8,6 +8,7 @@ use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.03;
 
 use Fcntl qw( SEEK_SET );
+use List::Util qw( max );
 use POSIX qw( ceil );
 use Time::HiRes qw( time );
 
@@ -207,7 +208,7 @@ sub cmd_put
 
          seek( $fh, SEEK_SET, $pos );
          $len = read $fh, my $chunk, $len or die "Cannot read() - $!";
-         $len_so_far += $len;
+         $len_so_far = max( $len_so_far, $pos + $len );
 
          return $chunk;
       },
