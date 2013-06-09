@@ -49,13 +49,15 @@ sub configure
 sub _split_pattern
 {
    my $self = shift;
-   my ( $pattern ) = @_;
+   my ( $pattern, $keep_basename ) = @_;
 
    my @parts = split m{/}, $pattern;
    my @prefix;
    push @prefix, shift @parts while @parts and $parts[0] !~ m/[?*]/;
 
    die "TODO: Directory globs not yet suported" if @parts > 1;
+
+   @parts = ( pop @prefix ) if $keep_basename and !@parts;
 
    my $prefix = join "/", @prefix;
    my $glob   = join "/", @parts;
@@ -95,7 +97,7 @@ sub ls
    my ( $s3pattern, %options ) = @_;
    my $LONG = $options{long};
 
-   my ( $prefix, $re ) = $self->_split_pattern( $s3pattern );
+   my ( $prefix, $re ) = $self->_split_pattern( $s3pattern, 1 );
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
       prefix => $prefix,
