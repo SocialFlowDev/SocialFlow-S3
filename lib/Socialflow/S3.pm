@@ -79,7 +79,7 @@ sub _expand_pattern
    return ( $prefix ) if !$re;
 
    my ( $keys ) = $self->{s3}->list_bucket(
-      prefix => $prefix,
+      prefix => "data/$prefix",
       delimiter => "/",
    )->get;
 
@@ -118,25 +118,30 @@ sub cmd_ls
    my ( $prefix, $re ) = $self->_split_pattern( $s3pattern // "", 1 );
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
-      prefix => $prefix,
+      prefix => "data/$prefix",
       delimiter => "/",
    )->get;
 
    while( @$keys or @$prefixes ) {
       if( !@$prefixes or @$keys and $keys->[0]{key} lt $prefixes->[0] ) {
          my $e = shift @$keys;
-         next if $re and $e->{key} !~ $re;
+         my $key = $e->{key};
+         next if $re and $key !~ $re;
+
+         $key =~ s{^data/}{};
 
          if( $LONG ) {
-            printf "%-38s %15d %s\n", $e->{key}, $e->{size}, $e->{last_modified};
+            printf "%-38s %15d %s\n", $key, $e->{size}, $e->{last_modified};
          }
          else {
-            printf "%-38s\n", $e->{key};
+            printf "%-38s\n", $key;
          }
       }
       elsif( !@$keys or @$prefixes and $prefixes->[0] lt $keys->[0]{key} ) {
          my $name = shift @$prefixes;
          next if $re and $name !~ $re;
+
+         $name =~ s{^data/}{};
 
          printf "%-38s DIR\n", $name;
       }
@@ -149,7 +154,7 @@ sub cmd_cat
    my ( $s3path ) = @_;
 
    $self->{s3}->get_object(
-      key    => $s3path,
+      key    => "data/$s3path",
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
          print $chunk;
@@ -167,7 +172,7 @@ sub cmd_get
    my $progress_timer;
 
    $self->{s3}->get_object(
-      key    => $s3path,
+      key    => "data/$s3path",
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
 
@@ -200,7 +205,7 @@ sub cmd_put
 
    my $progress_timer = $self->_start_progress( $len_total, \$len_so_far );
    my $result = $self->{s3}->put_object(
-      key    => $s3path,
+      key    => "data/$s3path",
       value_length => $len_total,
       gen_value => sub {
          my ( $pos, $len ) = @_;
@@ -235,7 +240,7 @@ sub cmd_rm
    # TODO: Future concurrently
    foreach my $s3path ( @s3paths ) {
       $self->{s3}->delete_object(
-         key    => $s3path,
+         key    => "data/$s3path",
       )->get;
       print "Removed $s3path\n";
    }
