@@ -46,6 +46,26 @@ sub configure
    $self->SUPER::configure( %args );
 }
 
+sub _split_pattern
+{
+   my $self = shift;
+   my ( $pattern ) = @_;
+
+   my @parts = split m{/}, $pattern;
+   my @prefix;
+   push @prefix, shift @parts while @parts and $parts[0] !~ m/[?*]/;
+
+   die "TODO: Directory globs not yet suported" if @parts > 1;
+
+   my $prefix = join "/", @prefix;
+   my $glob   = join "/", @parts;
+
+   ( my $re = $glob ) =~ s{(\?)    |  (\*)     |  ([^?*]+)    }
+                          {$1&&"." || $2&&".*" || quotemeta $3}xeg;
+
+   return ( $prefix, qr/^$re$/ );
+}
+
 sub _start_progress
 {
    my $self = shift;
@@ -72,17 +92,20 @@ sub _start_progress
 sub ls
 {
    my $self = shift;
-   my ( $s3path, %options ) = @_;
+   my ( $s3pattern, %options ) = @_;
    my $LONG = $options{long};
 
+   my ( $prefix, $re ) = $self->_split_pattern( $s3pattern );
+
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
-      prefix => $s3path,
+      prefix => $prefix,
       delimiter => "/",
    )->get;
 
    while( @$keys or @$prefixes ) {
       if( !@$prefixes or @$keys and $keys->[0]{key} lt $prefixes->[0] ) {
          my $e = shift @$keys;
+         next if $re and $e->{key} !~ $re;
 
          if( $LONG ) {
             printf "%-38s %15d %s\n", $e->{key}, $e->{size}, $e->{last_modified};
@@ -93,6 +116,7 @@ sub ls
       }
       elsif( !@$keys or @$prefixes and $prefixes->[0] lt $keys->[0]{key} ) {
          my $name = shift @$prefixes;
+         next if $re and $name !~ $re;
 
          printf "%-38s DIR\n", $name;
       }
