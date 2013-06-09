@@ -29,8 +29,8 @@ sub configure
    my $self = shift;
    my %args = @_;
 
-   foreach (qw( bucket )) {
-      $self->{$_} = delete $args{$_} if exists $args{$_};
+   if( my $bucket = delete $args{bucket} ) {
+      ( $self->{bucket}, $self->{prefix} ) = split m{/}, $bucket, 2;
    }
 
    if( my $s3 = delete $args{s3} ) {
@@ -39,6 +39,14 @@ sub configure
    }
 
    $self->SUPER::configure( %args );
+}
+
+sub _mkpath
+{
+   my $self = shift;
+   my ( $path ) = @_;
+   return $path unless defined( my $prefix = $self->{prefix} );
+   return join "/", $prefix, $path;
 }
 
 sub _start_progress
@@ -72,7 +80,7 @@ sub ls
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
       bucket => $self->{bucket},
-      prefix => $s3path,
+      prefix => $self->_mkpath($s3path),
       delimiter => "/",
    )->get;
 
@@ -97,7 +105,7 @@ sub cat
 
    $self->{s3}->get_object(
       bucket => $self->{bucket},
-      key    => $s3path,
+      key    => $self->_mkpath($s3path),
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
          print $chunk;
@@ -116,7 +124,7 @@ sub get
 
    $self->{s3}->get_object(
       bucket => $self->{bucket},
-      key    => $s3path,
+      key    => $self->_mkpath($s3path),
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
 
@@ -150,7 +158,7 @@ sub put
    my $progress_timer = $self->_start_progress( $len_total, \$len_so_far );
    my $result = $self->{s3}->put_object(
       bucket => $self->{bucket},
-      key    => $s3path,
+      key    => $self->_mkpath($s3path),
       value_length => $len_total,
       gen_value => sub {
          my ( $pos, $len ) = @_;
@@ -178,7 +186,7 @@ sub rm
 
    $self->{s3}->delete_object(
       bucket => $self->{bucket},
-      key    => $s3path,
+      key    => $self->_mkpath($s3path),
    )->get;
 }
 
