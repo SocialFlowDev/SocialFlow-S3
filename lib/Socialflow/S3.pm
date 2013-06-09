@@ -19,6 +19,7 @@ sub _init
    $args->{s3} ||= Net::Async::Webservice::S3->new(
       access_key => delete $args->{access_key},
       secret_key => delete $args->{secret_key},
+      list_max_keys => 1000,
    );
 
    $self->SUPER::_init( $args );
