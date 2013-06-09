@@ -60,4 +60,35 @@ given( shift @ARGV ) {
 
       $s3->cmd_rm( $s3path );
    }
+
+   # ll for "low-level" commands; access directly onto the base "filesystem"
+   # of S3 rather than data/metadata layer on top. Useful for debugging and
+   # development
+   when( "ll-ls" ) {
+      my $s3path = shift @ARGV;
+      my ( $keys, $prefixes ) = $s3->{s3}->list_bucket(
+         prefix => $s3path, delimiter => "/",
+      )->get;
+      print "$_->{key}\n" for @$keys;
+      print "$_\n" for @$prefixes;
+   }
+   when( "ll-cat" ) {
+      my $s3path = shift @ARGV;
+      print scalar $s3->{s3}->get_object(
+         key => $s3path,
+      )->get;
+   }
+   when( "ll-uncat" ) {
+      my $s3path = shift @ARGV;
+      $s3->{s3}->put_object(
+         key => $s3path,
+         value => do { local $/; scalar <STDIN> },
+      )->get;
+   }
+   when( "ll-rm" ) {
+      my $s3path = shift @ARGV;
+      $s3->{s3}->delete_object(
+         key => $s3path,
+      )->get;
+   }
 }
