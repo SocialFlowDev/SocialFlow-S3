@@ -108,7 +108,7 @@ sub _start_progress
    return $timer;
 }
 
-sub ls
+sub cmd_ls
 {
    my $self = shift;
    my ( $s3pattern, %options ) = @_;
@@ -142,7 +142,7 @@ sub ls
    }
 }
 
-sub cat
+sub cmd_cat
 {
    my $self = shift;
    my ( $s3path ) = @_;
@@ -156,7 +156,7 @@ sub cat
    )->get;
 }
 
-sub get
+sub cmd_get
 {
    my $self = shift;
    my ( $s3path, $localpath ) = @_;
@@ -188,7 +188,7 @@ sub get
    $self->remove_child( $progress_timer );
 }
 
-sub put
+sub cmd_put
 {
    my $self = shift;
    my ( $localpath, $s3path ) = @_;
@@ -220,7 +220,7 @@ sub put
    $self->remove_child( $progress_timer );
 }
 
-sub rm
+sub cmd_rm
 {
    my $self = shift;
    my ( $s3pattern ) = @_;

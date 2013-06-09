@@ -30,29 +30,34 @@ given( shift @ARGV ) {
       );
       my $s3path = shift @ARGV;
 
-      $s3->ls( $s3path, long => $LONG );
+      $s3->cmd_ls( $s3path, long => $LONG );
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;
 
-      $s3->cat( $s3path );
+      $s3->cmd_cat( $s3path );
    }
    when( "get" ) {
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // basename( $s3path );
 
-      $s3->get( $s3path, $localpath );
+      $s3->cmd_get( $s3path, $localpath );
    }
    when( "put" ) {
       my $localpath = shift @ARGV;
       my $s3path = shift @ARGV;
-      $s3path .= basename( $localpath ) if $s3path =~ m{/$};
+      if( !defined $s3path ) {
+         $s3path = basename( $localpath );
+      }
+      elsif( $s3path =~ m{/$} ) {
+         $s3path .= basename( $localpath );
+      }
 
-      $s3->put( $localpath, $s3path );
+      $s3->cmd_put( $localpath, $s3path );
    }
    when( "rm" ) {
       my $s3path = shift @ARGV;
 
-      $s3->rm( $s3path );
+      $s3->cmd_rm( $s3path );
    }
 }
