@@ -329,6 +329,35 @@ sub cmd_cat
    }
 }
 
+sub cmd_uncat
+{
+   my $self = shift;
+   my ( $s3path ) = @_;
+
+   my $md5 = Digest::MD5->new;
+
+   $self->add_child( my $stdin = IO::Async::Stream->new_for_stdin( on_read => sub { 0 } ) );
+
+   my $eof;
+   my $gen_parts = sub {
+      return if $eof;
+      return $stdin->read_exactly( PART_SIZE )
+         ->on_done( sub {
+            ( my $part, $eof ) = @_;
+            $md5->add( $part );
+         });
+   };
+
+   $self->{s3}->put_object(
+      key => "data/$s3path",
+      gen_parts => $gen_parts,
+   )->then( sub {
+      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+   })->get;
+
+   $self->remove_child( $stdin );
+}
+
 sub cmd_get
 {
    my $self = shift;

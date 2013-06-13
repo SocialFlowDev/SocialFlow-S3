@@ -37,6 +37,11 @@ given( shift @ARGV ) {
 
       $s3->cmd_cat( $s3path );
    }
+   when( "uncat" ) {
+      my $s3path = shift @ARGV;
+
+      $s3->cmd_uncat( $s3path );
+   }
    when( "get" ) {
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // basename( $s3path );
