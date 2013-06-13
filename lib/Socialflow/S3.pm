@@ -123,7 +123,7 @@ sub put_meta
    $self->{s3}->put_object(
       key => "meta/$path/$metaname",
       value => $value,
-   )->get;
+   );
 }
 
 sub get_meta
@@ -131,9 +131,9 @@ sub get_meta
    my $self = shift;
    my ( $path, $metaname ) = @_;
 
-   return scalar $self->{s3}->get_object(
+   $self->{s3}->get_object(
       key => "meta/$path/$metaname",
-   )->get;
+   );
 }
 
 sub put_file
@@ -181,11 +181,10 @@ sub put_file
    $self->{s3}->put_object(
       key    => "data/$s3path",
       gen_parts => $gen_parts,
-   )->get;
-
-   close $fh;
-
-   $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+   )->then( sub {
+      close $fh;
+      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+   });
 }
 
 sub get_file
@@ -198,35 +197,39 @@ sub get_file
    my $len_total;
    my $len_so_far;
 
-   my $exp_md5sum = $self->get_meta( $s3path, "md5sum" );
-   chomp $exp_md5sum;
-
    my $md5 = Digest::MD5->new;
 
-   $self->{s3}->get_object(
-      key    => "data/$s3path",
-      on_chunk => sub {
-         my ( $header, $chunk ) = @_;
-         $md5->add( $chunk );
+   Future->needs_all(
+      $self->get_meta( $s3path, "md5sum" )
+         ->transform( done => sub { chomp $_[0]; $_[0] } ),
+      $self->{s3}->get_object(
+         key    => "data/$s3path",
+         on_chunk => sub {
+            my ( $header, $chunk ) = @_;
+            $md5->add( $chunk );
 
-         if( !$fh ) {
-            open $fh, ">", $localpath or die "Cannot write $localpath - $!";
-            $len_so_far = 0;
-            $len_total = $header->content_length;
+            if( !$fh ) {
+               open $fh, ">", $localpath or die "Cannot write $localpath - $!";
+               $len_so_far = 0;
+               $len_total = $header->content_length;
 
+               $on_progress->( $len_so_far, $len_total );
+            }
+
+            $fh->print( $chunk );
+            $len_so_far += length $chunk;
             $on_progress->( $len_so_far, $len_total );
-         }
+         },
+      )
+   )->then( sub {
+      my ( $exp_md5sum ) = @_;
 
-         $fh->print( $chunk );
-         $len_so_far += length $chunk;
-         $on_progress->( $len_so_far, $len_total );
-      },
-   )->get;
-
-   my $got_md5sum = $md5->hexdigest;
-   if( $exp_md5sum ne $got_md5sum ) {
-      die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
-   }
+      my $got_md5sum = $md5->hexdigest;
+      if( $exp_md5sum ne $got_md5sum ) {
+         die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+      }
+      Future->new->done;
+   });
 }
 
 sub cmd_ls
@@ -273,18 +276,20 @@ sub cmd_cat
    my $self = shift;
    my ( $s3path ) = @_;
 
-   my $exp_md5sum = $self->get_meta( $s3path, "md5sum" );
-   chomp $exp_md5sum;
-
    my $md5 = Digest::MD5->new;
 
-   $self->{s3}->get_object(
-      key    => "data/$s3path",
-      on_chunk => sub {
-         my ( $header, $chunk ) = @_;
-         $md5->add( $chunk );
-         print $chunk;
-      },
+   my $exp_md5sum;
+   Future->needs_all(
+      $self->get_meta( $s3path, "md5sum" )
+         ->on_done( sub { ( $exp_md5sum ) = @_; chomp $exp_md5sum } ),
+      $self->{s3}->get_object(
+         key    => "data/$s3path",
+         on_chunk => sub {
+            my ( $header, $chunk ) = @_;
+            $md5->add( $chunk );
+            print $chunk;
+         },
+      )
    )->get;
 
    my $got_md5sum = $md5->hexdigest;
@@ -307,7 +312,7 @@ sub cmd_get
          $len_so_far = $_[0];
          $progress_timer ||= $self->_start_progress( $_[1], \$len_so_far );
       },
-   );
+   )->get;
 
    print "Successfully got $s3path to $localpath\n";
 
@@ -328,7 +333,7 @@ sub cmd_put
          $len_so_far = $_[0];
          $progress_timer ||= $self->_start_progress( $_[1], \$len_so_far );
       },
-   );
+   )->get;
 
    print "Successfully put $localpath to $s3path\n";
 
