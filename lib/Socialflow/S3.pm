@@ -11,10 +11,13 @@ use Net::Async::Webservice::S3 0.05;
 use Digest::MD5;
 use Fcntl qw( SEEK_SET );
 use List::Util qw( max );
+use List::MoreUtils qw( any );
 use POSIX qw( ceil );
 use Time::HiRes qw( time );
 
 use constant PART_SIZE => 100*1024*1024; # 100 MiB
+
+use constant FILES_AT_ONCE => 1; # TODO: Any higher an NaHTTP itself breaks :(
 
 sub _init
 {
@@ -416,6 +419,120 @@ sub cmd_rm
       $self->delete_file( $s3path )->get;
       print "Removed $s3path\n";
    }
+}
+
+sub cmd_push
+{
+   my $self = shift;
+   my ( $localroot, $s3root ) = @_;
+
+   # Determine the list of files first by entirely synchronous operations
+   my $total_bytes = 0;
+   my @files;
+
+   # BFS by stack
+   my @stack = ( undef );
+   while( @stack ) {
+      my $relpath = shift @stack;
+      my $localpath = join "/", grep { defined } $localroot, $relpath;
+
+      print STDERR "Scanning $localpath...\n";
+      opendir my $dirh, $localpath or die "Cannot opendir $localpath - $!\n";
+
+      my @moredirs;
+      foreach ( sort readdir $dirh ) {
+         next if $_ eq "." or $_ eq "..";
+
+         my $ent = join "/", grep { defined } $relpath, $_;
+
+         stat "$localroot/$ent" or next;
+
+         if( -d _ ) {
+            push @moredirs, $ent;
+         }
+         elsif( -f _ ) {
+            my $bytes = -s _;
+            push @files, [ $ent, $bytes ];
+            $total_bytes += $bytes;
+         }
+      }
+
+      unshift @stack, @moredirs;
+   }
+
+   my $total_files = scalar @files;
+
+   printf STDERR "Found %d files totalling %d bytes (%.1f MiB)\n",
+      $total_files, $total_bytes, $total_bytes / (1024*1024);
+
+   my $completed_files = 0;
+   my $completed_bytes = 0;
+
+   my @upload_slots;
+
+   $self->add_child( my $timer = IO::Async::Timer::Periodic->new(
+      interval => 1,
+      on_tick => sub {
+         my $done_bytes = $completed_bytes;
+
+         my $slotstats = join "\n", map {
+            my ( $f, $localpath, $s3path, $total, $done ) = @$_;
+
+            $done_bytes += $done;
+            sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
+         } @upload_slots;
+
+         printf STDERR "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
+            $completed_files, $total_files, 100 * $completed_files / $total_files,
+            $done_bytes,      $total_bytes, 100 * $done_bytes / $total_bytes;
+         print STDERR "$slotstats\n";
+      },
+   )->start );
+
+   while( @files or @upload_slots ) {
+      # Start any more uploads that are pending
+      while( @files and @upload_slots < FILES_AT_ONCE ) {
+         my ( $relpath, $size ) = @{ shift @files };
+
+         my $localpath = "$localroot/$relpath";
+
+         # Allow $s3root="" to mean upload into root
+         my $s3path    = join "/", grep { length } $s3root, $relpath;
+
+         print STDERR "START $localpath => $s3path\n";
+
+         push @upload_slots, my $slot = [ undef, $localpath, $s3path, $size, 0 ];
+
+         my $f = $self->put_file(
+            $localpath, $s3path,
+            on_progress => sub { ( $slot->[4] ) = @_ },
+         );
+         $slot->[0] = $f;
+      }
+
+      # Await atleast one to be completed
+      my @f = map { $_->[0] } @upload_slots;
+      $f[0]->await until any { $_->is_ready } @f;
+
+      # Expire complete ones
+      for( my $idx = 0; $idx < @upload_slots; $idx++ ) {
+         next if !$upload_slots[$idx]->[0]->is_ready;
+
+         my ( $f, $localpath, $s3path, $size ) = @{ $upload_slots[$idx] };
+
+         $f->get;
+
+         print STDERR "DONE  $localpath => $s3path\n";
+         $completed_files += 1;
+         $completed_bytes += $size;
+
+         splice @upload_slots, $idx, 1, ();
+         $idx--;
+      }
+   }
+
+   print STDERR "All files done\n";
+   $self->remove_child( $timer );
 }
 
 1;
