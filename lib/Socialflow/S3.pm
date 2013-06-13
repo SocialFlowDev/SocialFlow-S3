@@ -136,6 +136,99 @@ sub get_meta
    )->get;
 }
 
+sub put_file
+{
+   my $self = shift;
+   my ( $localpath, $s3path, %args ) = @_;
+   my $on_progress = $args{on_progress};
+
+   open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
+   my $len_total = -s $fh;
+   my $len_so_far = 0;
+
+   my $md5 = Digest::MD5->new;
+   my $md5_pos = 0;
+
+   my $gen_parts = sub {
+      return if $len_so_far >= $len_total;
+
+      my $part_start = $len_so_far;
+      my $part_length = $len_total - $len_so_far;
+      $part_length = PART_SIZE if $part_length > PART_SIZE;
+
+      my $buffer = "";
+      return $part_length, sub {
+         my ( $pos, $len ) = @_;
+         my $end = $pos + $len;
+
+         while( $end > length $buffer ) {
+            read( $fh, $buffer, $end - length $buffer, length $buffer ) or die "Cannot read() - $!";
+         }
+
+         my $overall_end = $part_start + $end;
+         $len_so_far = $overall_end if $overall_end > $len_so_far;
+         $on_progress->( $len_so_far, $len_total );
+
+         if( $overall_end > $md5_pos ) {
+            $md5->add( substr $buffer, $md5_pos - $part_start );
+            $md5_pos = $overall_end;
+         }
+
+         return substr( $buffer, $pos, $len );
+      };
+   };
+
+   $self->{s3}->put_object(
+      key    => "data/$s3path",
+      gen_parts => $gen_parts,
+   )->get;
+
+   close $fh;
+
+   $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+}
+
+sub get_file
+{
+   my $self = shift;
+   my ( $s3path, $localpath, %args ) = @_;
+   my $on_progress = $args{on_progress};
+
+   my $fh;
+   my $len_total;
+   my $len_so_far;
+
+   my $exp_md5sum = $self->get_meta( $s3path, "md5sum" );
+   chomp $exp_md5sum;
+
+   my $md5 = Digest::MD5->new;
+
+   $self->{s3}->get_object(
+      key    => "data/$s3path",
+      on_chunk => sub {
+         my ( $header, $chunk ) = @_;
+         $md5->add( $chunk );
+
+         if( !$fh ) {
+            open $fh, ">", $localpath or die "Cannot write $localpath - $!";
+            $len_so_far = 0;
+            $len_total = $header->content_length;
+
+            $on_progress->( $len_so_far, $len_total );
+         }
+
+         $fh->print( $chunk );
+         $len_so_far += length $chunk;
+         $on_progress->( $len_so_far, $len_total );
+      },
+   )->get;
+
+   my $got_md5sum = $md5->hexdigest;
+   if( $exp_md5sum ne $got_md5sum ) {
+      die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+   }
+}
+
 sub cmd_ls
 {
    my $self = shift;
@@ -205,38 +298,16 @@ sub cmd_get
    my $self = shift;
    my ( $s3path, $localpath ) = @_;
 
-   my $fh;
    my $len_so_far;
    my $progress_timer;
 
-   my $exp_md5sum = $self->get_meta( $s3path, "md5sum" );
-   chomp $exp_md5sum;
-
-   my $md5 = Digest::MD5->new;
-
-   $self->{s3}->get_object(
-      key    => "data/$s3path",
-      on_chunk => sub {
-         my ( $header, $chunk ) = @_;
-         $md5->add( $chunk );
-
-         if( !$fh ) {
-            open $fh, ">", $localpath or die "Cannot write $localpath - $!";
-            $len_so_far = 0;
-            my $len_total = $header->content_length;
-
-            $progress_timer = $self->_start_progress( $len_total, \$len_so_far );
-         }
-
-         $fh->print( $chunk );
-         $len_so_far += length $chunk;
+   $self->get_file(
+      $s3path, $localpath,
+      on_progress => sub {
+         $len_so_far = $_[0];
+         $progress_timer ||= $self->_start_progress( $_[1], \$len_so_far );
       },
-   )->get;
-
-   my $got_md5sum = $md5->hexdigest;
-   if( $exp_md5sum ne $got_md5sum ) {
-      die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
-   }
+   );
 
    print "Successfully got $s3path to $localpath\n";
 
@@ -248,50 +319,16 @@ sub cmd_put
    my $self = shift;
    my ( $localpath, $s3path ) = @_;
 
-   open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
-   my $len_total = -s $fh;
-   my $len_so_far = 0;
+   my $len_so_far;
+   my $progress_timer;
 
-   my $md5 = Digest::MD5->new;
-   my $md5_pos = 0;
-
-   my $gen_parts = sub {
-      return if $len_so_far >= $len_total;
-
-      my $part_start = $len_so_far;
-      my $part_length = $len_total - $len_so_far;
-      $part_length = PART_SIZE if $part_length > PART_SIZE;
-
-      my $buffer = "";
-      return $part_length, sub {
-         my ( $pos, $len ) = @_;
-         my $end = $pos + $len;
-
-         while( $end > length $buffer ) {
-            read( $fh, $buffer, $end - length $buffer, length $buffer ) or die "Cannot read() - $!";
-         }
-
-         my $overall_end = $part_start + $end;
-         $len_so_far = $overall_end if $overall_end > $len_so_far;
-
-         if( $overall_end > $md5_pos ) {
-            $md5->add( substr $buffer, $md5_pos - $part_start );
-            $md5_pos = $overall_end;
-         }
-
-         return substr( $buffer, $pos, $len );
-      };
-   };
-
-   my $progress_timer = $self->_start_progress( $len_total, \$len_so_far );
-   my $result = $self->{s3}->put_object(
-      key    => "data/$s3path",
-      gen_parts => $gen_parts,
-   )->get;
-
-   close $fh;
-
-   $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+   $self->put_file(
+      $localpath, $s3path,
+      on_progress => sub {
+         $len_so_far = $_[0];
+         $progress_timer ||= $self->_start_progress( $_[1], \$len_so_far );
+      },
+   );
 
    print "Successfully put $localpath to $s3path\n";
 
