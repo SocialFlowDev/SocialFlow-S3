@@ -143,21 +143,26 @@ sub put_file
    my $on_progress = $args{on_progress};
 
    open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
-   my $len_total = -s $fh;
+
+   my $len_total = -s $fh; # Total length of the file
    my $len_so_far = 0;
 
    my $md5 = Digest::MD5->new;
    my $md5_pos = 0;
 
-   my $gen_parts = sub {
-      return if $len_so_far >= $len_total;
+   my $gen_pos = 0;
 
-      my $part_start = $len_so_far;
-      my $part_length = $len_total - $len_so_far;
+   my $gen_parts = sub {
+      return if $gen_pos >= $len_total;
+
+      my $part_start = $gen_pos;
+      my $part_length = $len_total - $part_start;
       $part_length = PART_SIZE if $part_length > PART_SIZE;
 
+      $gen_pos += $part_length;
+
       my $buffer = "";
-      return $part_length, sub {
+      my $gen_value = sub {
          my ( $pos, $len ) = @_;
          my $end = $pos + $len;
 
@@ -176,6 +181,8 @@ sub put_file
 
          return substr( $buffer, $pos, $len );
       };
+
+      return $gen_value, $part_length;
    };
 
    $self->{s3}->put_object(
