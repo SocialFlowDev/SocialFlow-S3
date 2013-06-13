@@ -6,7 +6,7 @@ use base qw( IO::Async::Notifier );
 
 use Future;
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.04;
+use Net::Async::Webservice::S3 0.05;
 
 use Digest::MD5;
 use Fcntl qw( SEEK_SET );
