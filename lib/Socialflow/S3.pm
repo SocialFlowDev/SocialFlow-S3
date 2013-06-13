@@ -7,6 +7,7 @@ use base qw( IO::Async::Notifier );
 use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.04;
 
+use Digest::MD5;
 use Fcntl qw( SEEK_SET );
 use List::Util qw( max );
 use POSIX qw( ceil );
@@ -113,6 +114,37 @@ sub _start_progress
    return $timer;
 }
 
+sub put_meta
+{
+   my $self = shift;
+   my ( $path, $metaname, $value ) = @_;
+
+   $self->{s3}->put_object(
+      key => "meta/$path/$metaname",
+      value => $value,
+   )->get;
+}
+
+sub get_meta
+{
+   my $self = shift;
+   my ( $path, $metaname ) = @_;
+
+   return scalar $self->{s3}->get_object(
+      key => "meta/$path/$metaname",
+   )->get;
+}
+
+sub delete_meta
+{
+   my $self = shift;
+   my ( $path, $metaname ) = @_;
+
+   $self->{s3}->delete_object(
+      key => "meta/$path/$metaname",
+   )->get;
+}
+
 sub cmd_ls
 {
    my $self = shift;
@@ -157,13 +189,24 @@ sub cmd_cat
    my $self = shift;
    my ( $s3path ) = @_;
 
+   my $exp_md5sum = $self->get_meta( $s3path, "md5sum" );
+   chomp $exp_md5sum;
+
+   my $md5 = Digest::MD5->new;
+
    $self->{s3}->get_object(
       key    => "data/$s3path",
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
+         $md5->add( $chunk );
          print $chunk;
       },
    )->get;
+
+   my $got_md5sum = $md5->hexdigest;
+   if( $exp_md5sum ne $got_md5sum ) {
+      die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+   }
 }
 
 sub cmd_get
@@ -175,10 +218,16 @@ sub cmd_get
    my $len_so_far;
    my $progress_timer;
 
+   my $exp_md5sum = $self->get_meta( $s3path, "md5sum" );
+   chomp $exp_md5sum;
+
+   my $md5 = Digest::MD5->new;
+
    $self->{s3}->get_object(
       key    => "data/$s3path",
       on_chunk => sub {
          my ( $header, $chunk ) = @_;
+         $md5->add( $chunk );
 
          if( !$fh ) {
             open $fh, ">", $localpath or die "Cannot write $localpath - $!";
@@ -193,6 +242,11 @@ sub cmd_get
       },
    )->get;
 
+   my $got_md5sum = $md5->hexdigest;
+   if( $exp_md5sum ne $got_md5sum ) {
+      die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+   }
+
    print "Successfully got $s3path to $localpath\n";
 
    $self->remove_child( $progress_timer );
@@ -206,6 +260,9 @@ sub cmd_put
    open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
    my $len_total = -s $fh;
    my $len_so_far = 0;
+
+   my $md5 = Digest::MD5->new;
+   my $md5_pos = 0;
 
    my $gen_parts = sub {
       return if $len_so_far >= $len_total;
@@ -226,6 +283,11 @@ sub cmd_put
          my $overall_end = $part_start + $end;
          $len_so_far = $overall_end if $overall_end > $len_so_far;
 
+         if( $overall_end > $md5_pos ) {
+            $md5->add( substr $buffer, $md5_pos - $part_start );
+            $md5_pos = $overall_end;
+         }
+
          return substr( $buffer, $pos, $len );
       };
    };
@@ -237,6 +299,8 @@ sub cmd_put
    )->get;
 
    close $fh;
+
+   $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
 
    print "Successfully put $localpath to $s3path\n";
 
@@ -259,6 +323,7 @@ sub cmd_rm
       $self->{s3}->delete_object(
          key    => "data/$s3path",
       )->get;
+      # TODO: find and remove all the metadata
       print "Removed $s3path\n";
    }
 }
