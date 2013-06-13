@@ -5,12 +5,14 @@ use warnings;
 use base qw( IO::Async::Notifier );
 
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.03;
+use Net::Async::Webservice::S3 0.04;
 
 use Fcntl qw( SEEK_SET );
 use List::Util qw( max );
 use POSIX qw( ceil );
 use Time::HiRes qw( time );
+
+use constant PART_SIZE => 100*1024*1024; # 100 MiB
 
 sub _init
 {
@@ -21,6 +23,8 @@ sub _init
       access_key => delete $args->{access_key},
       secret_key => delete $args->{secret_key},
       list_max_keys => 1000,
+
+      read_size => 256*1024,
    );
 
    $self->SUPER::_init( $args );
@@ -203,20 +207,33 @@ sub cmd_put
    my $len_total = -s $fh;
    my $len_so_far = 0;
 
+   my $gen_parts = sub {
+      return if $len_so_far >= $len_total;
+
+      my $part_start = $len_so_far;
+      my $part_length = $len_total - $len_so_far;
+      $part_length = PART_SIZE if $part_length > PART_SIZE;
+
+      my $buffer = "";
+      return $part_length, sub {
+         my ( $pos, $len ) = @_;
+         my $end = $pos + $len;
+
+         while( $end > length $buffer ) {
+            read( $fh, $buffer, $end - length $buffer, length $buffer ) or die "Cannot read() - $!";
+         }
+
+         my $overall_end = $part_start + $end;
+         $len_so_far = $overall_end if $overall_end > $len_so_far;
+
+         return substr( $buffer, $pos, $len );
+      };
+   };
+
    my $progress_timer = $self->_start_progress( $len_total, \$len_so_far );
    my $result = $self->{s3}->put_object(
       key    => "data/$s3path",
-      value_length => $len_total,
-      gen_value => sub {
-         my ( $pos, $len ) = @_;
-         return undef if eof $fh;
-
-         seek( $fh, SEEK_SET, $pos );
-         $len = read $fh, my $chunk, $len or die "Cannot read() - $!";
-         $len_so_far = max( $len_so_far, $pos + $len );
-
-         return $chunk;
-      },
+      gen_parts => $gen_parts,
    )->get;
 
    close $fh;

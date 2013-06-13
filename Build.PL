@@ -9,7 +9,7 @@ my $build = Module::Build->new(
       'IO::Async::Notifier' => 0,
       'IO::Async::Loop' => 0,
       'IO::Async::Timer::Periodic' => 0,
-      'Net::Async::Webservice::S3' => '0.03',
+      'Net::Async::Webservice::S3' => '0.04',
    },
 );
 
