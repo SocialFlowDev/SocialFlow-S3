@@ -232,6 +232,30 @@ sub get_file
    });
 }
 
+sub delete_file
+{
+   my $self = shift;
+   my ( $s3path ) = @_;
+
+   Future->needs_all(
+      $self->{s3}->delete_object(
+         key    => "data/$s3path",
+      ),
+      $self->{s3}->list_bucket(
+         prefix => "meta/$s3path/",
+         delimiter => "/",
+      )->then( sub {
+         my ( $keys, $prefixes ) = @_;
+         my @metanames = map { $_->{key} } @$keys;
+         return Future->new->done unless @metanames;
+
+         Future->needs_all(
+            map { $self->{s3}->delete_object( key => $_ ) } @metanames
+         );
+      })
+   );
+}
+
 sub cmd_ls
 {
    my $self = shift;
@@ -353,23 +377,7 @@ sub cmd_rm
 
    # TODO: Future concurrently
    foreach my $s3path ( @s3paths ) {
-      Future->needs_all(
-         $self->{s3}->delete_object(
-            key    => "data/$s3path",
-         ),
-         $self->{s3}->list_bucket(
-            prefix => "meta/$s3path/",
-            delimiter => "/",
-         )->then( sub {
-            my ( $keys, $prefixes ) = @_;
-            my @metanames = map { $_->{key} } @$keys;
-            return Future->new->done unless @metanames;
-
-            Future->needs_all(
-               map { $self->{s3}->delete_object( key => $_ ) } @metanames
-            );
-         })
-      )->get;
+      $self->delete_file( $s3path )->get;
       print "Removed $s3path\n";
    }
 }
