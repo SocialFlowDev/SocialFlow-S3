@@ -426,7 +426,9 @@ sub cmd_rm
 sub cmd_push
 {
    my $self = shift;
-   my ( $localroot, $s3root ) = @_;
+   my ( $localroot, $s3root, %args ) = @_;
+
+   my $concurrent = $args{concurrent} || FILES_AT_ONCE;
 
    # Determine the list of files first by entirely synchronous operations
    my $total_bytes = 0;
@@ -493,7 +495,7 @@ sub cmd_push
 
    while( @files or @upload_slots ) {
       # Start any more uploads that are pending
-      while( @files and @upload_slots < FILES_AT_ONCE ) {
+      while( @files and @upload_slots < $concurrent ) {
          my ( $relpath, $size ) = @{ shift @files };
 
          my $localpath = "$localroot/$relpath";

@@ -66,10 +66,15 @@ given( shift @ARGV ) {
       $s3->cmd_rm( $s3path );
    }
    when( "push" ) {
+      GetOptions(
+         'c|concurrent=i' => \my $CONCURRENT,
+      );
       my $localroot = shift @ARGV;
       my $s3root = shift @ARGV // $localroot;
 
-      $s3->cmd_push( $localroot, $s3root );
+      $s3->cmd_push( $localroot, $s3root,
+         concurrent => $CONCURRENT,
+      );
    }
 
    # ll for "low-level" commands; access directly onto the base "filesystem"
