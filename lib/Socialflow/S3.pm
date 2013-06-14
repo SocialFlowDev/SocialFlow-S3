@@ -17,7 +17,7 @@ use Time::HiRes qw( time );
 
 use constant PART_SIZE => 100*1024*1024; # 100 MiB
 
-use constant FILES_AT_ONCE => 1; # TODO: Any higher an NaHTTP itself breaks :(
+use constant FILES_AT_ONCE => 4;
 
 sub _init
 {
@@ -31,6 +31,8 @@ sub _init
 
       read_size => 256*1024,
    );
+
+   $args->{s3}->{http}->configure( max_connections_per_host => 0 );
 
    $self->SUPER::_init( $args );
 }
