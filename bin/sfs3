@@ -12,6 +12,8 @@ use File::Basename qw( basename );
 use Getopt::Long;
 use YAML qw( LoadFile );
 
+Getopt::Long::Configure( "bundling" );
+
 my $config = LoadFile( "etc/sfs3.conf" );
 
 my $loop = IO::Async::Loop->new;
