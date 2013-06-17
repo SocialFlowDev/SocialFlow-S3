@@ -514,7 +514,7 @@ sub cmd_push
          my $done_bytes = $completed_bytes;
 
          my $slotstats = join "\n", map {
-            my ( $localpath, $s3path, $total, $done ) = @$_;
+            my ( $s3path, $total, $done ) = @$_;
 
             $done_bytes += $done;
             sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
@@ -536,17 +536,19 @@ sub cmd_push
       my $s3path    = join "/", grep { length } $s3root, $relpath;
 
       $self->print_message( "START $localpath => $s3path" );
-      push @uploads, my $slot = [ $localpath, $s3path, $size, 0 ];
+      push @uploads, my $slot = [ $s3path, $size, 0 ];
+      $timer->invoke_event( on_tick => );
 
       return $self->put_file(
          $localpath, $s3path,
-         on_progress => sub { ( $slot->[3] ) = @_ },
+         on_progress => sub { ( $slot->[2] ) = @_ },
       )->on_done( sub {
          $self->print_message( "DONE  $localpath => $s3path" );
          $completed_files += 1;
          $completed_bytes += $size;
 
          @uploads = grep { $_ != $slot } @uploads;
+         $timer->invoke_event( on_tick => );
       });
    } foreach => \@files,
      return => $self->loop->new_future,
