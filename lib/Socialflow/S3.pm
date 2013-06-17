@@ -5,6 +5,7 @@ use warnings;
 use base qw( IO::Async::Notifier );
 
 use Future;
+use Future::Utils qw( fmap_void );
 use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.05;
 
@@ -473,7 +474,7 @@ sub cmd_push
    my $completed_files = 0;
    my $completed_bytes = 0;
 
-   my @upload_slots;
+   my @uploads;
 
    $self->add_child( my $timer = IO::Async::Timer::Periodic->new(
       interval => 1,
@@ -481,11 +482,11 @@ sub cmd_push
          my $done_bytes = $completed_bytes;
 
          my $slotstats = join "\n", map {
-            my ( $f, $localpath, $s3path, $total, $done ) = @$_;
+            my ( $localpath, $s3path, $total, $done ) = @$_;
 
             $done_bytes += $done;
             sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
-         } @upload_slots;
+         } @uploads;
 
          printf STDERR "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
             $completed_files, $total_files, 100 * $completed_files / $total_files,
@@ -494,47 +495,29 @@ sub cmd_push
       },
    )->start );
 
-   while( @files or @upload_slots ) {
-      # Start any more uploads that are pending
-      while( @files and @upload_slots < $concurrent ) {
-         my ( $relpath, $size ) = @{ shift @files };
+   ( fmap_void {
+      my ( $relpath, $size ) = @{$_[0]};
 
-         my $localpath = "$localroot/$relpath";
+      my $localpath = "$localroot/$relpath";
+      # Allow $s3root="" to mean upload into root
+      my $s3path    = join "/", grep { length } $s3root, $relpath;
 
-         # Allow $s3root="" to mean upload into root
-         my $s3path    = join "/", grep { length } $s3root, $relpath;
+      print STDERR "START $localpath => $s3path\n";
+      push @uploads, my $slot = [ $localpath, $s3path, $size, 0 ];
 
-         print STDERR "START $localpath => $s3path\n";
-
-         push @upload_slots, my $slot = [ undef, $localpath, $s3path, $size, 0 ];
-
-         my $f = $self->put_file(
-            $localpath, $s3path,
-            on_progress => sub { ( $slot->[4] ) = @_ },
-         );
-         $slot->[0] = $f;
-      }
-
-      # Await atleast one to be completed
-      my @f = map { $_->[0] } @upload_slots;
-      $f[0]->await until any { $_->is_ready } @f;
-
-      # Expire complete ones
-      for( my $idx = 0; $idx < @upload_slots; $idx++ ) {
-         next if !$upload_slots[$idx]->[0]->is_ready;
-
-         my ( $f, $localpath, $s3path, $size ) = @{ $upload_slots[$idx] };
-
-         $f->get;
-
+      return $self->put_file(
+         $localpath, $s3path,
+         on_progress => sub { ( $slot->[3] ) = @_ },
+      )->on_done( sub {
          print STDERR "DONE  $localpath => $s3path\n";
          $completed_files += 1;
          $completed_bytes += $size;
 
-         splice @upload_slots, $idx, 1, ();
-         $idx--;
-      }
-   }
+         @uploads = grep { $_ != $slot } @uploads;
+      });
+   } foreach => \@files,
+     return => $self->loop->new_future,
+     concurrent => $concurrent )->get;
 
    print STDERR "All files done\n";
    $self->remove_child( $timer );
