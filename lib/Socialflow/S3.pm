@@ -102,6 +102,8 @@ sub _split_pattern
    my $prefix = join "/", @prefix;
    my $glob   = join "/", @parts;
 
+   $prefix .= "/" if length $prefix;
+
    return ( $prefix ) if !@parts;
 
    ( my $re = $glob ) =~ s{(\?)    |  (\*)     |  ([^?*]+)    }
@@ -121,6 +123,9 @@ sub _expand_pattern
       prefix => "data/$prefix",
       delimiter => "/",
    )->get;
+
+   # Strip 'data/' prefix
+   substr($_->{key}, 0, 5) = "" for @$keys;
 
    return map { $_->{key} =~ $re ? $_->{key} : () } @$keys;
 }
