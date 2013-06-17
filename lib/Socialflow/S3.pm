@@ -35,6 +35,8 @@ sub _init
 
    $args->{s3}->{http}->configure( max_connections_per_host => 0 );
 
+   $self->{status_lines} = 0;
+
    $self->SUPER::_init( $args );
 }
 
@@ -57,6 +59,31 @@ sub configure
    }
 
    $self->SUPER::configure( %args );
+}
+
+# Status message printing
+sub print_message
+{
+   my $self = shift;
+   my ( $msg ) = @_;
+
+   # Clear an old status message
+   print STDERR "\e\x4D\e[K" for 1 .. $self->{status_lines};
+   $self->{status_lines} = 0;
+
+   print STDERR "$msg\n";
+}
+
+sub print_status
+{
+   my $self = shift;
+   my ( $status ) = @_;
+
+   $status =~ s/\n$//; # only the final one
+
+   $self->print_message( $status );
+
+   $self->{status_lines} = split m/\n/, $status;
 }
 
 sub _split_pattern
@@ -442,7 +469,7 @@ sub cmd_push
       my $relpath = shift @stack;
       my $localpath = join "/", grep { defined } $localroot, $relpath;
 
-      print STDERR "Scanning $localpath...\n";
+      $self->print_message( "Scanning $localpath..." );
       opendir my $dirh, $localpath or die "Cannot opendir $localpath - $!\n";
 
       my @moredirs;
@@ -468,8 +495,8 @@ sub cmd_push
 
    my $total_files = scalar @files;
 
-   printf STDERR "Found %d files totalling %d bytes (%.1f MiB)\n",
-      $total_files, $total_bytes, $total_bytes / (1024*1024);
+   $self->print_message( sprintf "Found %d files totalling %d bytes (%.1f MiB)",
+      $total_files, $total_bytes, $total_bytes / (1024*1024) );
 
    my $completed_files = 0;
    my $completed_bytes = 0;
@@ -488,10 +515,11 @@ sub cmd_push
             sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
          } @uploads;
 
-         printf STDERR "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
-            $completed_files, $total_files, 100 * $completed_files / $total_files,
-            $done_bytes,      $total_bytes, 100 * $done_bytes / $total_bytes;
-         print STDERR "$slotstats\n";
+         $self->print_status(
+            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
+               $completed_files, $total_files, 100 * $completed_files / $total_files,
+               $done_bytes,      $total_bytes, 100 * $done_bytes / $total_bytes ) .
+            $slotstats );
       },
    )->start );
 
@@ -502,14 +530,14 @@ sub cmd_push
       # Allow $s3root="" to mean upload into root
       my $s3path    = join "/", grep { length } $s3root, $relpath;
 
-      print STDERR "START $localpath => $s3path\n";
+      $self->print_message( "START $localpath => $s3path" );
       push @uploads, my $slot = [ $localpath, $s3path, $size, 0 ];
 
       return $self->put_file(
          $localpath, $s3path,
          on_progress => sub { ( $slot->[3] ) = @_ },
       )->on_done( sub {
-         print STDERR "DONE  $localpath => $s3path\n";
+         $self->print_message( "DONE  $localpath => $s3path" );
          $completed_files += 1;
          $completed_bytes += $size;
 
@@ -519,7 +547,7 @@ sub cmd_push
      return => $self->loop->new_future,
      concurrent => $concurrent )->get;
 
-   print STDERR "All files done\n";
+   $self->print_message( "All files done" );
    $self->remove_child( $timer );
 }
 
