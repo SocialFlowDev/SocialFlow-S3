@@ -27,10 +27,11 @@ given( shift @ARGV ) {
    when( "ls" ) {
       GetOptions(
          'l|long' => \my $LONG,
+         'r|recursive' => \my $RECURSE,
       );
       my $s3path = shift @ARGV;
 
-      $s3->cmd_ls( $s3path, long => $LONG );
+      $s3->cmd_ls( $s3path, long => $LONG, recurse => $RECURSE );
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;

@@ -273,12 +273,13 @@ sub cmd_ls
    my $self = shift;
    my ( $s3pattern, %options ) = @_;
    my $LONG = $options{long};
+   my $RECURSE = $options{recurse};
 
    my ( $prefix, $re ) = $self->_split_pattern( $s3pattern // "", 1 );
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
       prefix => "data/$prefix",
-      delimiter => "/",
+      delimiter => ( $RECURSE ? "" : "/" ),
    )->get;
 
    while( @$keys or @$prefixes ) {
