@@ -79,6 +79,17 @@ given( shift @ARGV ) {
          concurrent => $CONCURRENT,
       );
    }
+   when( "pull" ) {
+      GetOptions(
+         'c|concurrent=i' => \my $CONCURRENT,
+      );
+      my $s3root = shift @ARGV;
+      my $localroot = shift @ARGV // $s3root;
+
+      $s3->cmd_pull( $s3root, $localroot,
+         concurrent => $CONCURRENT,
+      );
+   }
 
    # ll for "low-level" commands; access directly onto the base "filesystem"
    # of S3 rather than data/metadata layer on top. Useful for debugging and

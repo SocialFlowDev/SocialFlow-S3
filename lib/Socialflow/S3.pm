@@ -11,6 +11,8 @@ use Net::Async::Webservice::S3 0.05;
 
 use Digest::MD5;
 use Fcntl qw( SEEK_SET );
+use File::Basename qw( dirname );
+use File::Path qw( make_path );
 use List::Util qw( max );
 use List::MoreUtils qw( any );
 use POSIX qw( ceil );
@@ -285,6 +287,10 @@ sub get_file
             $md5->add( $chunk );
 
             if( !$fh ) {
+               if( $args{mkdir} and ! -d dirname( $localpath ) ) {
+                  make_path( dirname $localpath );
+               }
+
                open $fh, ">", $localpath or die "Cannot write $localpath - $!";
                $len_so_far = 0;
                $len_total = $header->content_length;
@@ -560,6 +566,70 @@ sub cmd_push
          $completed_bytes += $size;
 
          @uploads = grep { $_ != $slot } @uploads;
+         $timer->invoke_event( on_tick => );
+      });
+   } foreach => \@files,
+     return => $self->loop->new_future,
+     concurrent => $concurrent )->get;
+
+   $self->print_message( "All files done" );
+   $self->remove_child( $timer );
+}
+
+sub cmd_pull
+{
+   my $self = shift;
+   my ( $s3root, $localroot, %args ) = @_;
+
+   my $concurrent = $args{concurrent} || FILES_AT_ONCE;
+
+   $self->print_message( "Listing files on S3..." );
+   my ( $keys ) = $self->{s3}->list_bucket(
+      prefix => "data/$s3root",
+      # no delimiter
+   )->get;
+
+   my $total_bytes = 0;
+   my $total_files = 0;
+   my @files;
+
+   foreach ( @$keys ) {
+      $total_bytes += $_->{size};
+      $total_files += 1;
+      # Trim "data/" prefix
+      push @files, [ substr( $_->{key}, 5 ), $_->{size} ];
+   }
+
+   $self->print_message( sprintf "Found %d files totalling %d bytes (%.1f MiB)",
+      $total_files, $total_bytes, $total_bytes / (1024*1024) );
+
+   my $completed_files = 0;
+   my $completed_bytes = 0;
+
+   my @downloads;
+   my $timer = $self->_start_progress_bulk( \@downloads, $total_files, $total_bytes, \$completed_files, \$completed_bytes );
+
+   ( fmap_void {
+      my ( $relpath, $size ) = @{$_[0]};
+
+      # Allow $s3root="" to mean download from root
+      my $s3path    = join "/", grep { length } $s3root, $relpath;
+      my $localpath = "$localroot/$relpath";
+
+      $self->print_message( "START $localpath <= $s3path" );
+      push @downloads, my $slot = [ $s3path, $size, 0 ];
+      $timer->invoke_event( on_tick => );
+
+      return $self->get_file(
+         $s3path, $localpath,
+         on_progress => sub { ( $slot->[2] ) = @_ },
+         mkdir => 1,
+      )->on_done( sub {
+         $self->print_message( "DONE  $localpath <= $s3path" );
+         $completed_files += 1;
+         $completed_bytes += $size;
+
+         @downloads = grep { $_ != $slot } @downloads;
          $timer->invoke_event( on_tick => );
       });
    } foreach => \@files,
