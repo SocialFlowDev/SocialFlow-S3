@@ -130,7 +130,7 @@ sub _expand_pattern
    return map { $_->{key} =~ $re ? $_->{key} : () } @$keys;
 }
 
-sub _start_progress
+sub _start_progress_one
 {
    my $self = shift;
    my ( $len_total, $len_so_far_ref ) = @_;
@@ -150,6 +150,37 @@ sub _start_progress
       interval => 1,
    );
    $self->add_child( $timer->start );
+   return $timer;
+}
+
+sub _start_progress_bulk
+{
+   my $self = shift;
+   my ( $slots, $total_files, $total_bytes, $completed_files_ref, $completed_bytes_ref ) = @_;
+
+   my $timer = IO::Async::Timer::Periodic->new(
+      interval => 1,
+      on_tick => sub {
+         my $done_bytes = $$completed_bytes_ref;
+         my $completed_files = $$completed_files_ref;
+
+         my $slotstats = join "\n", map {
+            my ( $s3path, $total, $done ) = @$_;
+
+            $done_bytes += $done;
+            sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
+         } @$slots;
+
+         $self->print_status(
+            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
+               $completed_files, $total_files, 100 * $completed_files / $total_files,
+               $done_bytes,      $total_bytes, 100 * $done_bytes / $total_bytes ) .
+            $slotstats );
+      },
+   );
+   $self->add_child( $timer );
+   $timer->start;
+
    return $timer;
 }
 
@@ -409,7 +440,7 @@ sub cmd_get
       $s3path, $localpath,
       on_progress => sub {
          $len_so_far = $_[0];
-         $progress_timer ||= $self->_start_progress( $_[1], \$len_so_far );
+         $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
       },
    )->get;
 
@@ -430,7 +461,7 @@ sub cmd_put
       $localpath, $s3path,
       on_progress => sub {
          $len_so_far = $_[0];
-         $progress_timer ||= $self->_start_progress( $_[1], \$len_so_far );
+         $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
       },
    )->get;
 
@@ -507,26 +538,7 @@ sub cmd_push
    my $completed_bytes = 0;
 
    my @uploads;
-
-   $self->add_child( my $timer = IO::Async::Timer::Periodic->new(
-      interval => 1,
-      on_tick => sub {
-         my $done_bytes = $completed_bytes;
-
-         my $slotstats = join "\n", map {
-            my ( $s3path, $total, $done ) = @$_;
-
-            $done_bytes += $done;
-            sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
-         } @uploads;
-
-         $self->print_status(
-            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
-               $completed_files, $total_files, 100 * $completed_files / $total_files,
-               $done_bytes,      $total_bytes, 100 * $done_bytes / $total_bytes ) .
-            $slotstats );
-      },
-   )->start );
+   my $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes );
 
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
