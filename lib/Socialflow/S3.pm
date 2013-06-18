@@ -10,11 +10,9 @@ use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.05;
 
 use Digest::MD5;
-use Fcntl qw( SEEK_SET );
 use File::Basename qw( dirname );
 use File::Path qw( make_path );
 use List::Util qw( max );
-use List::MoreUtils qw( any );
 use POSIX qw( ceil );
 use Time::HiRes qw( time );
 
