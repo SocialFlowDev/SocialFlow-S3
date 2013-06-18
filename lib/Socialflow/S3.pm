@@ -13,8 +13,10 @@ use Digest::MD5;
 use File::Basename qw( dirname );
 use File::Path qw( make_path );
 use List::Util qw( max );
-use POSIX qw( ceil );
+use POSIX qw( ceil strftime );
+use POSIX::strptime qw( strptime );
 use Time::HiRes qw( time );
+use Time::Local qw( timegm );
 
 use constant PART_SIZE => 100*1024*1024; # 100 MiB
 
@@ -184,6 +186,23 @@ sub _start_progress_bulk
    return $timer;
 }
 
+## support FUNCTIONs
+{
+   my $fmt_iso8601 = "%Y-%m-%dT%H:%M:%SZ";
+
+   sub strftime_iso8601
+   {
+      return strftime $fmt_iso8601, gmtime $_[0];
+   }
+
+   sub strptime_iso8601
+   {
+      # TODO: This ought to be doable using a regexp and core's POSIX::mktime
+      #   Some care needs to be taken with timezone offsets though
+      return timegm strptime $_[0], $fmt_iso8601;
+   }
+}
+
 sub put_meta
 {
    my $self = shift;
@@ -213,7 +232,7 @@ sub put_file
 
    open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
 
-   my $len_total = -s $fh; # Total length of the file
+   my ( $len_total, $mtime ) = ( stat $fh )[7,9];
    my $len_so_far = 0;
 
    my $md5 = Digest::MD5->new;
@@ -255,8 +274,11 @@ sub put_file
    };
 
    $self->{s3}->put_object(
-      key    => "data/$s3path",
+      key       => "data/$s3path",
       gen_parts => $gen_parts,
+      meta      => {
+         Mtime     => strftime_iso8601( $mtime ),
+      },
    )->then( sub {
       close $fh;
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
@@ -302,12 +324,18 @@ sub get_file
          },
       )
    )->then( sub {
-      my ( $exp_md5sum ) = @_;
+      my ( $exp_md5sum, undef, $header, $meta ) = @_;
 
       my $got_md5sum = $md5->hexdigest;
       if( $exp_md5sum ne $got_md5sum ) {
          die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
       }
+
+      close $fh;
+
+      my $mtime = strptime_iso8601( $meta->{Mtime} );
+      utime( $mtime, $mtime, $localpath ) or die "Cannot set mtime - $!";
+
       Future->new->done;
    });
 }
