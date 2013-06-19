@@ -89,6 +89,16 @@ sub print_status
    $self->{status_lines} = split m/\n/, $status;
 }
 
+sub _fname_glob_to_re
+{
+   my ( $glob ) = @_;
+
+   ( my $re = $glob ) =~ s{(\?)       |  (\*)        |  ([^?*]+)    }
+                          {$1&&"[^/]" || $2&&"[^/]*" || quotemeta $3}xeg;
+
+   return $re;
+}
+
 sub _split_pattern
 {
    my $self = shift;
@@ -109,8 +119,7 @@ sub _split_pattern
 
    return ( $prefix ) if !@parts;
 
-   ( my $re = $glob ) =~ s{(\?)    |  (\*)     |  ([^?*]+)    }
-                          {$1&&"." || $2&&".*" || quotemeta $3}xeg;
+   my $re = _fname_glob_to_re( $glob );
 
    if( length $parts[-1] ) {
       $re = qr/^$re$/;
