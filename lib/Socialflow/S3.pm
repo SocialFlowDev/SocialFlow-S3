@@ -2,6 +2,7 @@ package Socialflow::S3;
 
 use strict;
 use warnings;
+use feature qw( switch );
 use base qw( IO::Async::Notifier );
 
 use Future;
@@ -229,6 +230,35 @@ sub get_meta
    $self->{s3}->get_object(
       key => "meta/$path/$metaname",
    );
+}
+
+sub test_skip
+{
+   my $self = shift;
+   my ( $skip_logic, $s3path, $localpath ) = @_;
+
+   return do { given( $skip_logic ) {
+      when( "all" ) {
+         Future->new->done( 0 );
+      }
+      when( "stat" ) {
+         my ( $size, $mtime ) = ( stat $localpath )[7,9];
+         defined $size or return Future->new->done( 0 );
+
+         $self->{s3}->head_object(
+            key => "data/$s3path"
+         )->then( sub {
+            my ( $header, $meta ) = @_;
+
+            return Future->new->done( 0 ) unless defined $meta->{Mtime};
+
+            return Future->new->done(
+               $header->content_length == $size &&
+               strptime_iso8601( $meta->{Mtime} ) == $mtime
+            );
+         });
+      }
+   } };
 }
 
 sub put_file
@@ -556,6 +586,7 @@ sub cmd_push
    my ( $localroot, $s3root, %args ) = @_;
 
    my $concurrent = $args{concurrent} || FILES_AT_ONCE;
+   my $skip_logic = $args{skip_logic} || "stat";
 
    # Determine the list of files first by entirely synchronous operations
    my $total_bytes = 0;
@@ -609,20 +640,28 @@ sub cmd_push
       # Allow $s3root="" to mean upload into root
       my $s3path    = join "/", grep { length } $s3root, $relpath;
 
-      $self->print_message( "START $localpath => $s3path" );
-      push @uploads, my $slot = [ $s3path, $size, 0 ];
-      $timer->invoke_event( on_tick => );
+      $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
+         my ( $skip ) = @_;
+         if( $skip ) {
+            $self->print_message( "SKIP  $localpath => $s3path" );
+            return Future->new->done;
+         }
 
-      return $self->put_file(
-         $localpath, $s3path,
-         on_progress => sub { ( $slot->[2] ) = @_ },
-      )->on_done( sub {
-         $self->print_message( "DONE  $localpath => $s3path" );
-         $completed_files += 1;
-         $completed_bytes += $size;
-
-         @uploads = grep { $_ != $slot } @uploads;
+         $self->print_message( "START $localpath => $s3path" );
+         push @uploads, my $slot = [ $s3path, $size, 0 ];
          $timer->invoke_event( on_tick => );
+
+         return $self->put_file(
+            $localpath, $s3path,
+            on_progress => sub { ( $slot->[2] ) = @_ },
+         )->on_done( sub {
+            $self->print_message( "DONE  $localpath => $s3path" );
+            $completed_files += 1;
+            $completed_bytes += $size;
+
+            @uploads = grep { $_ != $slot } @uploads;
+            $timer->invoke_event( on_tick => );
+         });
       });
    } foreach => \@files,
      return => $self->loop->new_future,
@@ -638,6 +677,7 @@ sub cmd_pull
    my ( $s3root, $localroot, %args ) = @_;
 
    my $concurrent = $args{concurrent} || FILES_AT_ONCE;
+   my $skip_logic = $args{skip_logic} || "stat";
 
    $self->print_message( "Listing files on S3..." );
    my ( $keys ) = $self->{s3}->list_bucket(
@@ -672,21 +712,29 @@ sub cmd_pull
       my $s3path    = join "/", grep { length } $s3root, $relpath;
       my $localpath = "$localroot/$relpath";
 
-      $self->print_message( "START $localpath <= $s3path" );
-      push @downloads, my $slot = [ $s3path, $size, 0 ];
-      $timer->invoke_event( on_tick => );
+      $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
+         my ( $skip ) = @_;
+         if( $skip ) {
+            $self->print_message( "SKIP  $localpath <= $s3path" );
+            return Future->new->done;
+         }
 
-      return $self->get_file(
-         $s3path, $localpath,
-         on_progress => sub { ( $slot->[2] ) = @_ },
-         mkdir => 1,
-      )->on_done( sub {
-         $self->print_message( "DONE  $localpath <= $s3path" );
-         $completed_files += 1;
-         $completed_bytes += $size;
-
-         @downloads = grep { $_ != $slot } @downloads;
+         $self->print_message( "START $localpath <= $s3path" );
+         push @downloads, my $slot = [ $s3path, $size, 0 ];
          $timer->invoke_event( on_tick => );
+
+         return $self->get_file(
+            $s3path, $localpath,
+            on_progress => sub { ( $slot->[2] ) = @_ },
+            mkdir => 1,
+         )->on_done( sub {
+            $self->print_message( "DONE  $localpath <= $s3path" );
+            $completed_files += 1;
+            $completed_bytes += $size;
+
+            @downloads = grep { $_ != $slot } @downloads;
+            $timer->invoke_event( on_tick => );
+         });
       });
    } foreach => \@files,
      return => $self->loop->new_future,
