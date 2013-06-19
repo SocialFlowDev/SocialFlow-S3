@@ -267,15 +267,17 @@ sub test_skip
    my $self = shift;
    my ( $skip_logic, $s3path, $localpath ) = @_;
 
-   return do { given( $skip_logic ) {
+   my $f;
+
+   given( $skip_logic ) {
       when( "all" ) {
-         Future->new->done( 0 );
+         $f = Future->new->done( 0 );
       }
       when( "stat" ) {
          my ( $size, $mtime ) = ( stat $localpath )[7,9];
          defined $size or return Future->new->done( 0 );
 
-         $self->{s3}->head_object(
+         $f = $self->{s3}->head_object(
             key => "data/$s3path"
          )->then( sub {
             my ( $header, $meta ) = @_;
@@ -292,7 +294,12 @@ sub test_skip
             return $_[0];
          });
       }
-   } };
+      default {
+         die "Unrecognised 'skip_logic' value $skip_logic";
+      }
+   }
+
+   return $f;
 }
 
 sub put_file
