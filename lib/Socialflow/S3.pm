@@ -93,8 +93,8 @@ sub _fname_glob_to_re
 {
    my ( $glob ) = @_;
 
-   ( my $re = $glob ) =~ s{(\?)       |  (\*)        |  ([^?*]+)    }
-                          {$1&&"[^/]" || $2&&"[^/]*" || quotemeta $3}xeg;
+   ( my $re = $glob ) =~ s{(\?)       |  (\*\*)   |  (\*)       |  ([^?*]+)    }
+                          {$1&&"[^/]" || $2&&".*" || $3&&"[^/]*"|| quotemeta $4}xeg;
 
    return $re;
 }
@@ -147,6 +147,24 @@ sub _expand_pattern
    substr($_->{key}, 0, 5) = "" for @$keys;
 
    return map { $_->{key} =~ $re ? $_->{key} : () } @$keys;
+}
+
+sub _make_filter_sub
+{
+   my ( $only, $exclude ) = @_;
+
+   $only    = [ map { my $re = _fname_glob_to_re $_; qr/^$re$/ } @$only ];
+   $exclude = [ map { my $re = _fname_glob_to_re $_; qr/^$re$/ } @$exclude ];
+
+   return sub {
+      my ( $file ) = @_;
+
+      $file =~ $_ and return 0 for @$exclude;
+
+      @$only or return 1;
+      $file =~ $_ and return 1 for @$only;
+      return 0;
+   };
 }
 
 sub _start_progress_one
@@ -596,6 +614,7 @@ sub cmd_push
 
    my $concurrent = $args{concurrent} || FILES_AT_ONCE;
    my $skip_logic = $args{skip_logic} || "stat";
+   my $filter = _make_filter_sub( $args{only}, $args{exclude} );
 
    # Determine the list of files first by entirely synchronous operations
    my $total_bytes = 0;
@@ -605,6 +624,7 @@ sub cmd_push
    my @stack = ( undef );
    while( @stack ) {
       my $relpath = shift @stack;
+
       my $localpath = join "/", grep { defined } $localroot, $relpath;
 
       $self->print_message( "Scanning $localpath..." );
@@ -622,6 +642,7 @@ sub cmd_push
             push @moredirs, $ent;
          }
          elsif( -f _ ) {
+            next unless $filter->( $ent );
             my $bytes = -s _;
             push @files, [ $ent, $bytes ];
             $total_bytes += $bytes;
@@ -687,6 +708,7 @@ sub cmd_pull
 
    my $concurrent = $args{concurrent} || FILES_AT_ONCE;
    my $skip_logic = $args{skip_logic} || "stat";
+   my $filter = _make_filter_sub( $args{only}, $args{exclude} );
 
    $self->print_message( "Listing files on S3..." );
    my ( $keys ) = $self->{s3}->list_bucket(
@@ -699,10 +721,12 @@ sub cmd_pull
    my @files;
 
    foreach ( @$keys ) {
+      # Trim "data/" prefix
+      next unless $filter->( my $name = substr( $_->{key}, 5 ) );
+
       $total_bytes += $_->{size};
       $total_files += 1;
-      # Trim "data/" prefix
-      push @files, [ substr( $_->{key}, 5 ), $_->{size} ];
+      push @files, [ $name, $_->{size} ];
    }
 
    $self->print_message( sprintf "Found %d files totalling %d bytes (%.1f MiB)",

@@ -73,6 +73,8 @@ given( shift @ARGV ) {
       GetOptions(
          'c|concurrent=i' => \my $CONCURRENT,
          'a|all'          => sub { $SKIP_LOGIC = "all" },
+         'only=s'         => \my @ONLYS,
+         'exclude=s'      => \my @EXCLUDES,
       );
       my $localroot = shift @ARGV;
       my $s3root = shift @ARGV // $localroot;
@@ -80,6 +82,7 @@ given( shift @ARGV ) {
       $s3->cmd_push( $localroot, $s3root,
          concurrent => $CONCURRENT,
          skip_logic => $SKIP_LOGIC,
+         only => \@ONLYS, exclude => \@EXCLUDES,
       );
    }
    when( "pull" ) {
@@ -87,6 +90,8 @@ given( shift @ARGV ) {
       GetOptions(
          'c|concurrent=i' => \my $CONCURRENT,
          'a|all'          => sub { $SKIP_LOGIC = "all" },
+         'only=s'         => \my @ONLYS,
+         'exclude=s'      => \my @EXCLUDES,
       );
       my $s3root = shift @ARGV;
       my $localroot = shift @ARGV // $s3root;
@@ -94,6 +99,7 @@ given( shift @ARGV ) {
       $s3->cmd_pull( $s3root, $localroot,
          concurrent => $CONCURRENT,
          skip_logic => $SKIP_LOGIC,
+         only => \@ONLYS, exclude => \@EXCLUDES,
       );
    }
 
