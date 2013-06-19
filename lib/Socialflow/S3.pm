@@ -340,8 +340,10 @@ sub get_file
 
       close $fh;
 
-      my $mtime = strptime_iso8601( $meta->{Mtime} );
-      utime( $mtime, $mtime, $localpath ) or die "Cannot set mtime - $!";
+      if( defined $meta->{Mtime} ) {
+         my $mtime = strptime_iso8601( $meta->{Mtime} );
+         utime( $mtime, $mtime, $localpath ) or die "Cannot set mtime - $!";
+      }
 
       Future->new->done;
    });
@@ -397,7 +399,7 @@ sub cmd_ls
             return Future->new->done( {
                name => substr( $key, 5 ),
                size => $header->content_length,
-               mtime => strptime_iso8601( $meta->{Mtime} ),
+               mtime => ( defined $meta->{Mtime} ? strptime_iso8601( $meta->{Mtime} ) : undef ),
             } );
          });
       } foreach => $keys, return => $self->loop->new_future, concurrent => 20 )->get;
@@ -415,7 +417,7 @@ sub cmd_ls
          if( $LONG ) {
             # Timestamps in local timezone
             my @mtime = localtime $e->{mtime};
-            my $timestamp = strftime "%Y-%m-%d %H:%M:%S", @mtime;
+            my $timestamp = defined $e->{mtime} ? strftime( "%Y-%m-%d %H:%M:%S", @mtime ) : "-- unknown --";
             printf "%-38s %15d %s\n", $name, $e->{size}, $timestamp;
          }
          else {
@@ -478,13 +480,14 @@ sub cmd_uncat
    };
 
    $self->{s3}->put_object(
-      key => "data/$s3path",
+      key       => "data/$s3path",
       gen_parts => $gen_parts,
+      meta      => {
+         Mtime     => strftime_iso8601( time ),
+      },
    )->then( sub {
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
    })->get;
-
-   $self->remove_child( $stdin );
 }
 
 sub cmd_get
