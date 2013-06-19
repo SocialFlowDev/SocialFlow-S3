@@ -371,7 +371,12 @@ sub get_file
    my ( $s3path, $localpath, %args ) = @_;
    my $on_progress = $args{on_progress};
 
-   my $fh;
+   if( $args{mkdir} and ! -d dirname( $localpath ) ) {
+      make_path( dirname $localpath );
+   }
+
+   open my $fh, ">", $localpath or die "Cannot write $localpath - $!";
+
    my $len_total;
    my $len_so_far;
 
@@ -386,12 +391,7 @@ sub get_file
             my ( $header, $chunk ) = @_;
             $md5->add( $chunk );
 
-            if( !$fh ) {
-               if( $args{mkdir} and ! -d dirname( $localpath ) ) {
-                  make_path( dirname $localpath );
-               }
-
-               open $fh, ">", $localpath or die "Cannot write $localpath - $!";
+            if( !defined $len_total ) {
                $len_so_far = 0;
                $len_total = $header->content_length;
 
