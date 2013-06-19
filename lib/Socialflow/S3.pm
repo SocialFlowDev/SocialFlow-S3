@@ -195,6 +195,9 @@ sub _start_progress_bulk
    my $self = shift;
    my ( $slots, $total_files, $total_bytes, $completed_files_ref, $completed_bytes_ref ) = @_;
 
+   # Easiest way to avoid division by zero errors in this code is to add a tiny amount (0.001)
+   # to all the byte totals, which doesn't affect the percentage display very much.
+
    my $timer = IO::Async::Timer::Periodic->new(
       interval => 1,
       on_tick => sub {
@@ -205,13 +208,13 @@ sub _start_progress_bulk
             my ( $s3path, $total, $done ) = @$_;
 
             $done_bytes += $done;
-            sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / $total, $s3path;
+            sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / ($total+0.001), $s3path;
          } @$slots;
 
          $self->print_status(
             sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
                $completed_files, $total_files, 100 * $completed_files / $total_files,
-               $done_bytes,      $total_bytes, 100 * $done_bytes / $total_bytes ) .
+               $done_bytes,      $total_bytes, 100 * $done_bytes / ($total_bytes+0.001) ) .
             $slotstats );
       },
    );
@@ -340,6 +343,15 @@ sub put_file
 
       return $gen_value, $part_length;
    };
+
+   # special-case for zero-byte long files as otherwise we'll generate no
+   # parts at all
+   $gen_parts = sub {
+      return if $gen_pos > 0;
+
+      $gen_pos = 1;
+      return "", 0;
+   } if $len_total == 0;
 
    $self->{s3}->put_object(
       key       => "data/$s3path",
