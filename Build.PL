@@ -5,6 +5,7 @@ use Module::Build;
 
 my $build = Module::Build->new(
    module_name => 'Socialflow::S3',
+   dist_abstract => 'Amazon S3 tool for Socialflow',
    requires => {
       'Future' => '0.14', # fmap_void
       'IO::Async::Notifier' => 0,
@@ -13,7 +14,11 @@ my $build = Module::Build->new(
       'Net::Async::HTTP' => '0.22',
       'Net::Async::Webservice::S3' => '0.06',
       'POSIX::strptime' => 0,
+      'YAML' => 0,
    },
+   auto_configure_requires => 0, # Don't add M::B to configure_requires
+   create_makefile_pl => 'traditional',
+   create_readme  => 1,
 );
 
 $build->create_build_script;
