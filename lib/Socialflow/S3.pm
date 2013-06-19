@@ -231,10 +231,14 @@ sub _start_progress_bulk
                        ( 0.30 * ( $times[0][BYTES] - $times[-1][BYTES] ) / ( $times[0][TIME] - $times[-1][TIME] ) ) +
                        ( 0.20 * ( $times[0][BYTES] - 0                 ) / ( $times[0][TIME] - $start_time ) );
 
-            my $remaining_secs = $remaining_bytes / $rate;
-
-            $ratestats = sprintf "%d KiB/sec; ETA %d sec (at %s)",
-               $rate / 1024, $remaining_secs, strftime( "%H:%M:%S", localtime time + $remaining_secs );
+            if( $rate > 0 ) {
+               my $remaining_secs = $remaining_bytes / $rate;
+               $ratestats = sprintf "%d KiB/sec; ETA %d sec (at %s)",
+                  $rate / 1024, $remaining_secs, strftime( "%H:%M:%S", localtime time + $remaining_secs );
+            }
+            else {
+               $ratestats = "0 KiB/sec; ETA ---";
+            }
          }
 
          $self->print_status(
