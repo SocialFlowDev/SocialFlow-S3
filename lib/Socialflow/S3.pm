@@ -93,7 +93,7 @@ sub _split_pattern
    my $self = shift;
    my ( $pattern, $keep_basename ) = @_;
 
-   my @parts = split m{/}, $pattern;
+   my @parts = split m{/}, $pattern, -1;
    my @prefix;
    push @prefix, shift @parts while @parts and $parts[0] !~ m/[?*]/;
 
@@ -102,7 +102,7 @@ sub _split_pattern
    @parts = ( pop @prefix ) if $keep_basename and !@parts and @prefix;
 
    my $prefix = join "/", @prefix;
-   my $glob   = join "/", @parts;
+   my $glob   = join "/", @prefix, @parts;
 
    $prefix .= "/" if length $prefix;
 
@@ -111,7 +111,14 @@ sub _split_pattern
    ( my $re = $glob ) =~ s{(\?)    |  (\*)     |  ([^?*]+)    }
                           {$1&&"." || $2&&".*" || quotemeta $3}xeg;
 
-   return ( $prefix, qr/^$re$/ );
+   if( length $parts[-1] ) {
+      $re = qr/^$re$/;
+   }
+   else {
+      $re = qr/^$re/; # We know the RE pattern now ends in a /, unanchored
+   }
+
+   return ( $prefix, $re );
 }
 
 sub _expand_pattern
@@ -378,26 +385,30 @@ sub cmd_ls
       delimiter => ( $RECURSE ? "" : "/" ),
    )->get;
 
-   while( @$keys or @$prefixes ) {
-      if( !@$prefixes or @$keys and $keys->[0]{key} lt $prefixes->[0] ) {
-         my $e = shift @$keys;
-         my $key = $e->{key};
-         next if $re and $key !~ $re;
+   my @files;
+   if( $LONG ) {
+      @files = die "TODO";
+   }
+   else {
+      @files = map { +{ name => substr $_->{key}, 5 } } @$keys;
+   }
 
-         $key =~ s{^data/}{};
-
-         if( $LONG ) {
-            printf "%-38s %15d %s\n", $key, $e->{size}, $e->{last_modified};
-         }
-         else {
-            printf "%-38s\n", $key;
-         }
-      }
-      elsif( !@$keys or @$prefixes and $prefixes->[0] lt $keys->[0]{key} ) {
-         my $name = shift @$prefixes;
+   while( @files or @$prefixes ) {
+      if( !@$prefixes or @files and $files[0]{name} lt $prefixes->[0] ) {
+         my $e = shift @files;
+         my $name = $e->{name};
          next if $re and $name !~ $re;
 
-         $name =~ s{^data/}{};
+         if( $LONG ) {
+            printf "%-38s %15d %s\n", $name, $e->{size}, $e->{last_modified};
+         }
+         else {
+            printf "%-38s\n", $name;
+         }
+      }
+      elsif( !@files or @$prefixes and $prefixes->[0] lt $files[0]{name} ) {
+         my $name = substr shift @$prefixes, 5;
+         next if $re and substr( $name, 0, -1 ) !~ $re;
 
          printf "%-38s DIR\n", $name;
       }
