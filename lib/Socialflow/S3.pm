@@ -5,7 +5,7 @@ use warnings;
 use base qw( IO::Async::Notifier );
 
 use Future;
-use Future::Utils qw( fmap_void );
+use Future::Utils qw( fmap1 fmap_void );
 use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.05;
 
@@ -387,7 +387,20 @@ sub cmd_ls
 
    my @files;
    if( $LONG ) {
-      @files = die "TODO";
+      @files = ( fmap1 {
+         my $key = $_[0]->{key};
+         $self->{s3}->head_object(
+            key => $key
+         )->then( sub {
+            my ( $header, $meta ) = @_;
+
+            return Future->new->done( {
+               name => substr( $key, 5 ),
+               size => $header->content_length,
+               mtime => strptime_iso8601( $meta->{Mtime} ),
+            } );
+         });
+      } foreach => $keys, return => $self->loop->new_future, concurrent => 20 )->get;
    }
    else {
       @files = map { +{ name => substr $_->{key}, 5 } } @$keys;
@@ -400,7 +413,10 @@ sub cmd_ls
          next if $re and $name !~ $re;
 
          if( $LONG ) {
-            printf "%-38s %15d %s\n", $name, $e->{size}, $e->{last_modified};
+            # Timestamps in local timezone
+            my @mtime = localtime $e->{mtime};
+            my $timestamp = strftime "%Y-%m-%d %H:%M:%S", @mtime;
+            printf "%-38s %15d %s\n", $name, $e->{size}, $timestamp;
          }
          else {
             printf "%-38s\n", $name;
