@@ -86,7 +86,7 @@ sub print_status
 
    $self->print_message( $status );
 
-   $self->{status_lines} = split m/\n/, $status;
+   $self->{status_lines} = () = split m/\n/, $status, -1;
 }
 
 sub _fname_glob_to_re
