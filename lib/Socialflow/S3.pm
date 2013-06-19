@@ -190,10 +190,18 @@ sub _start_progress_one
    return $timer;
 }
 
+use constant {
+   BYTES => 0,
+   TIME  => 1,
+};
+
 sub _start_progress_bulk
 {
    my $self = shift;
    my ( $slots, $total_files, $total_bytes, $completed_files_ref, $completed_bytes_ref ) = @_;
+
+   my $start_time = time;
+   my @times;
 
    # Easiest way to avoid division by zero errors in this code is to add a tiny amount (0.001)
    # to all the byte totals, which doesn't affect the percentage display very much.
@@ -211,10 +219,29 @@ sub _start_progress_bulk
             sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / ($total+0.001), $s3path;
          } @$slots;
 
+         # Maintain a 30-second time queue
+         unshift @times, [ $done_bytes, time ];
+         pop @times while @times > 30;
+
+         # A reasonable estimtate of data rate is 50% of last second, 30% of last 30 seconds, 20% overall
+         my $ratestats;
+         if( @times > 2 ) {
+            my $remaining_bytes = $total_bytes - $done_bytes;
+            my $rate = ( 0.50 * ( $times[0][BYTES] - $times[1][BYTES]  ) / ( $times[0][TIME] - $times[1][TIME] ) ) +
+                       ( 0.30 * ( $times[0][BYTES] - $times[-1][BYTES] ) / ( $times[0][TIME] - $times[-1][TIME] ) ) +
+                       ( 0.20 * ( $times[0][BYTES] - 0                 ) / ( $times[0][TIME] - $start_time ) );
+
+            my $remaining_secs = $remaining_bytes / $rate;
+
+            $ratestats = sprintf "%d KiB/sec; ETA %d sec (at %s)",
+               $rate / 1024, $remaining_secs, strftime( "%H:%M:%S", localtime time + $remaining_secs );
+         }
+
          $self->print_status(
-            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%]\n",
+            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%] %s\n",
                $completed_files, $total_files, 100 * $completed_files / $total_files,
-               $done_bytes,      $total_bytes, 100 * $done_bytes / ($total_bytes+0.001) ) .
+               $done_bytes,      $total_bytes, 100 * $done_bytes / ($total_bytes+0.001),
+               $ratestats // " -- " ) .
             $slotstats );
       },
    );
