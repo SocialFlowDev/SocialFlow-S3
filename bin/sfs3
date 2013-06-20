@@ -24,8 +24,42 @@ my $s3 = Socialflow::S3->new(
 );
 $loop->add( $s3 );
 
+sub do_help
+{
+   print STDERR <<'EOF';
+
+Usage: sfs3 COMMAND [OPTIONS...]
+
+Commands:
+   ls [--long] [--recursive] S3PATH
+   cat S3FILE
+   uncat S3FILE
+   get S3FILE [LOCALFILE]
+   put LOCALFILE [S3FILE]
+   rm S3PATTERN
+
+   push LOCALROOT S3ROOT
+     [--concurrent=N] [--all] [--only=PATTERN]* [--exclude=PATTERN]*
+
+   pull S3ROOT LOCALROOT
+     [--concurrent=N] [--all] [--only=PATTERN]* [--exclude=PATTERN]*
+
+Patterns:
+  May contain wildcards
+    ?  A single character, not '/'
+    *  Zero or more characters, not '/'
+    ** Zero or more characters, including '/'
+
+EOF
+}
+
 ## main
 given( shift @ARGV ) {
+   when([ undef, "help" ]) {
+      do_help;
+      exit 0;
+   }
+
    when( "ls" ) {
       GetOptions(
          'l|long' => \my $LONG,
@@ -132,5 +166,11 @@ given( shift @ARGV ) {
       $s3->{s3}->delete_object(
          key => $s3path,
       )->get;
+   }
+
+   default {
+      print STDERR "Unrecognised subcommand '$_'\n";
+      do_help;
+      exit 1;
    }
 }
