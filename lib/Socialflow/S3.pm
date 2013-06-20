@@ -212,11 +212,11 @@ sub _start_progress_bulk
          my $done_bytes = $$completed_bytes_ref;
          my $completed_files = $$completed_files_ref;
 
-         my $slotstats = join "\n", map {
+         my $slotstats = join "", map {
             my ( $s3path, $total, $done ) = @$_;
 
             $done_bytes += $done;
-            sprintf "  [%6d of %6d; %2.1f%%] %s", $done, $total, 100 * $done / ($total+0.001), $s3path;
+            sprintf "  [%6d of %6d; %2.1f%%] %s\n", $done, $total, 100 * $done / ($total+0.001), $s3path;
          } @$slots;
 
          # Maintain a 30-second time queue
@@ -241,12 +241,11 @@ sub _start_progress_bulk
             }
          }
 
-         $self->print_status(
-            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%] %s\n",
+         $self->print_status( $slotstats .
+            sprintf( "[%3d of %3d; %2.1f%%] [%6d of %6d; %2.1f%%] %s",
                $completed_files, $total_files, 100 * $completed_files / $total_files,
                $done_bytes,      $total_bytes, 100 * $done_bytes / ($total_bytes+0.001),
-               $ratestats // " -- " ) .
-            $slotstats );
+               $ratestats // " -- " ) );
       },
    );
    $self->add_child( $timer );
