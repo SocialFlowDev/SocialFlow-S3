@@ -299,7 +299,8 @@ sub test_skip
 
    my $f;
 
-   given( $skip_logic ) {
+   # 'given' creates a lexical $_ which upsets the split() in the md5sum case; 'for' does not
+   for( $skip_logic ) {
       when( "all" ) {
          $f = Future->new->done( 0 );
       }
@@ -322,6 +323,37 @@ sub test_skip
             my ( $error, $request, $response ) = $_[0]->failure;
             return Future->new->done( 0 ) if $response->code == 404;
             return $_[0];
+         });
+      }
+      when( "md5sum" ) {
+         $f = $self->test_skip( "stat", $s3path, $localpath )->then( sub {
+            my ( $skip ) = @_;
+            return Future->new->done( 0 ) if !$skip;
+
+            # TODO: IO::Async probably wants a Future-returning process running method
+            my $localmd5_f = $self->loop->new_future;
+            $self->loop->run_child(
+               command => [ "md5sum", $localpath ],
+               on_finish => sub {
+                  my ( $pid, $exitcode, $stdout, $stderr ) = @_;
+                  if( $exitcode == 0 ) {
+                     my ( $md5sum ) = split m/\s+/, $stdout;
+                     $localmd5_f->done( $md5sum );
+                  }
+                  else {
+                     $localmd5_f->fail( "Unable to run md5sum ($exitcode) - $stderr" );
+                  }
+               },
+            );
+
+            Future->needs_all(
+               $localmd5_f,
+               $self->get_meta( $s3path, "md5sum" )
+                  ->transform( done => sub { chomp $_[0]; $_[0] } ),
+            );
+         })->then( sub {
+            my ( $localmd5, $s3md5 ) = @_;
+            return Future->new->done( $localmd5 eq $s3md5 );
          });
       }
       default {

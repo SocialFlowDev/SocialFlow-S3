@@ -39,10 +39,10 @@ Commands:
    rm S3PATTERN
 
    push LOCALROOT S3ROOT
-     [--concurrent=N] [--all] [--only=PATTERN]* [--exclude=PATTERN]*
+     [--concurrent=N] [--all] [--md5sum] [--only=PATTERN]* [--exclude=PATTERN]*
 
    pull S3ROOT LOCALROOT
-     [--concurrent=N] [--all] [--only=PATTERN]* [--exclude=PATTERN]*
+     [--concurrent=N] [--all] [--md5sum] [--only=PATTERN]* [--exclude=PATTERN]*
 
 Patterns:
   May contain wildcards
@@ -107,6 +107,7 @@ given( shift @ARGV ) {
       GetOptions(
          'c|concurrent=i' => \my $CONCURRENT,
          'a|all'          => sub { $SKIP_LOGIC = "all" },
+         '5|md5sum'       => sub { $SKIP_LOGIC = "md5sum" },
          'only=s'         => \my @ONLYS,
          'exclude=s'      => \my @EXCLUDES,
       ) or exit 1;
@@ -124,6 +125,7 @@ given( shift @ARGV ) {
       GetOptions(
          'c|concurrent=i' => \my $CONCURRENT,
          'a|all'          => sub { $SKIP_LOGIC = "all" },
+         '5|md5sum'       => sub { $SKIP_LOGIC = "md5sum" },
          'only=s'         => \my @ONLYS,
          'exclude=s'      => \my @EXCLUDES,
       ) or exit 1;
