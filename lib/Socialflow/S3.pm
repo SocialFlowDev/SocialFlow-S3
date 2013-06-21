@@ -8,7 +8,7 @@ use base qw( IO::Async::Notifier );
 use Future;
 use Future::Utils qw( fmap1 fmap_void );
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.05;
+use Net::Async::Webservice::S3 0.08; # ssl
 
 use Digest::MD5;
 use File::Basename qw( dirname );
@@ -31,6 +31,7 @@ sub _init
    $args->{s3} ||= Net::Async::Webservice::S3->new(
       access_key => delete $args->{access_key},
       secret_key => delete $args->{secret_key},
+      ssl        => delete $args->{ssl},
       list_max_keys => 1000,
 
       read_size => 256*1024,
