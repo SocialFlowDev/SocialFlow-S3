@@ -16,6 +16,7 @@ use File::Path qw( make_path );
 use List::Util qw( max );
 use POSIX qw( ceil strftime );
 use POSIX::strptime qw( strptime );
+use Scalar::Util qw( blessed );
 use Time::HiRes qw( time );
 use Time::Local qw( timegm );
 
@@ -365,74 +366,91 @@ sub test_skip
    return $f;
 }
 
+sub _put_file_from_parts
+{
+   my $self = shift;
+   my ( $s3path, $gen_parts, %args ) = @_;
+   my $on_progress = $args{on_progress};
+
+   my $md5 = Digest::MD5->new;
+   my $more_func = sub {
+      my ( $more ) = @_;
+      $md5->add( $more );
+      return $more;
+   };
+
+   $self->{s3}->put_object(
+      key       => "data/$s3path",
+      meta      => $args{meta},
+      gen_parts => sub {
+         my ( $part, $part_len ) = $gen_parts->() or return;
+
+         if( blessed $part and $part->isa( "Future" ) ) {
+            return $part->then( sub {
+               my ( $more ) = @_;
+               return Future->new->done( $more_func->( $more ) );
+            });
+         }
+         elsif( ref $part eq "CODE" ) {
+            my $buffer = "";
+            return sub {
+               my ( $pos, $len ) = @_;
+               my $end = $pos + $len;
+               if( length $buffer < $end ) {
+                  my $more = $part->( length $buffer, $end - length $buffer );
+                  $buffer .= $more_func->( $more );
+               }
+               $on_progress->( $end );
+               return substr( $buffer, $pos, $len );
+            }, $part_len
+         }
+         else {
+            die "TOOD: Not sure what to do with part";
+         }
+      },
+   )->then( sub {
+      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+   });
+}
+
 sub put_file
 {
    my $self = shift;
    my ( $localpath, $s3path, %args ) = @_;
-   my $on_progress = $args{on_progress};
 
    open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
 
    my ( $len_total, $mtime ) = ( stat $fh )[7,9];
    my $len_so_far = 0;
 
-   my $md5 = Digest::MD5->new;
-   my $md5_pos = 0;
-
-   my $gen_pos = 0;
+   my $read_pos = 0;
 
    my $gen_parts = sub {
-      return if $gen_pos >= $len_total;
+      return if $read_pos >= $len_total;
 
-      my $part_start = $gen_pos;
+      my $part_start = $read_pos;
       my $part_length = $len_total - $part_start;
       $part_length = PART_SIZE if $part_length > PART_SIZE;
 
-      $gen_pos += $part_length;
+      $read_pos += $part_length;
 
-      my $buffer = "";
       my $gen_value = sub {
          my ( $pos, $len ) = @_;
-         my $end = $pos + $len;
+         my $ret = sysread( $fh, my $buffer, $len );
+         defined $ret or die "Cannot read - $!";
 
-         while( $end > length $buffer ) {
-            read( $fh, $buffer, $end - length $buffer, length $buffer ) or die "Cannot read() - $!";
-         }
-
-         my $overall_end = $part_start + $end;
-         $len_so_far = $overall_end if $overall_end > $len_so_far;
-         $on_progress->( $len_so_far, $len_total );
-
-         if( $overall_end > $md5_pos ) {
-            $md5->add( substr $buffer, $md5_pos - $part_start );
-            $md5_pos = $overall_end;
-         }
-
-         return substr( $buffer, $pos, $len );
+         return $buffer;
       };
 
       return $gen_value, $part_length;
    };
 
-   # special-case for zero-byte long files as otherwise we'll generate no
-   # parts at all
-   $gen_parts = sub {
-      return if $gen_pos > 0;
-
-      $gen_pos = 1;
-      return "", 0;
-   } if $len_total == 0;
-
-   $self->{s3}->put_object(
-      key       => "data/$s3path",
-      gen_parts => $gen_parts,
-      meta      => {
-         Mtime     => strftime_iso8601( $mtime ),
+   $self->_put_file_from_parts( $s3path, $gen_parts,
+      meta => {
+         Mtime => strftime_iso8601( $mtime ),
       },
-   )->then( sub {
-      close $fh;
-      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
-   });
+      %args,
+   );
 }
 
 sub get_file
@@ -608,8 +626,6 @@ sub cmd_uncat
    my $self = shift;
    my ( $s3path ) = @_;
 
-   my $md5 = Digest::MD5->new;
-
    $self->add_child( my $stdin = IO::Async::Stream->new_for_stdin( on_read => sub { 0 } ) );
 
    my $eof;
@@ -618,19 +634,14 @@ sub cmd_uncat
       return $stdin->read_exactly( PART_SIZE )
          ->on_done( sub {
             ( my $part, $eof ) = @_;
-            $md5->add( $part );
          });
    };
 
-   $self->{s3}->put_object(
-      key       => "data/$s3path",
-      gen_parts => $gen_parts,
-      meta      => {
-         Mtime     => strftime_iso8601( time ),
+   $self->_put_file_from_parts( $s3path, $gen_parts, 
+      meta => {
+         Mtime => strftime_iso8601( time() ),
       },
-   )->then( sub {
-      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
-   })->get;
+   )->get;
 }
 
 sub cmd_get
