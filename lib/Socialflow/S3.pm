@@ -453,6 +453,37 @@ sub put_file
    );
 }
 
+sub _get_file_chunks
+{
+   my $self = shift;
+   my ( $s3path, $on_chunk, %args ) = @_;
+
+   my $md5 = Digest::MD5->new;
+
+   Future->needs_all(
+      $self->get_meta( $s3path, "md5sum" )
+         ->transform( done => sub { chomp $_[0]; $_[0] } ),
+      $self->{s3}->get_object(
+         key    => "data/$s3path",
+         on_chunk => sub {
+            my ( $header, $chunk ) = @_;
+            $md5->add( $chunk );
+
+            $on_chunk->( $header, $chunk );
+         },
+      )
+   )->then( sub {
+      my ( $exp_md5sum, undef, $header, $meta ) = @_;
+
+      my $got_md5sum = $md5->hexdigest;
+      if( $exp_md5sum ne $got_md5sum ) {
+         die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+      }
+
+      Future->new->done( $header, $meta );
+   });
+}
+
 sub get_file
 {
    my $self = shift;
@@ -468,36 +499,24 @@ sub get_file
    my $len_total;
    my $len_so_far;
 
-   my $md5 = Digest::MD5->new;
+   $self->_get_file_chunks(
+      $s3path,
+      sub {
+         my ( $header, $chunk ) = @_;
 
-   Future->needs_all(
-      $self->get_meta( $s3path, "md5sum" )
-         ->transform( done => sub { chomp $_[0]; $_[0] } ),
-      $self->{s3}->get_object(
-         key    => "data/$s3path",
-         on_chunk => sub {
-            my ( $header, $chunk ) = @_;
-            $md5->add( $chunk );
+         if( !defined $len_total ) {
+            $len_so_far = 0;
+            $len_total = $header->content_length;
 
-            if( !defined $len_total ) {
-               $len_so_far = 0;
-               $len_total = $header->content_length;
-
-               $on_progress->( $len_so_far, $len_total );
-            }
-
-            $fh->print( $chunk );
-            $len_so_far += length $chunk;
             $on_progress->( $len_so_far, $len_total );
-         },
-      )
-   )->then( sub {
-      my ( $exp_md5sum, undef, $header, $meta ) = @_;
+         }
 
-      my $got_md5sum = $md5->hexdigest;
-      if( $exp_md5sum ne $got_md5sum ) {
-         die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
-      }
+         $fh->print( $chunk );
+         $len_so_far += length $chunk;
+         $on_progress->( $len_so_far, $len_total );
+      },
+   )->then( sub {
+      my ( $header, $meta ) = @_;
 
       close $fh;
 
@@ -599,26 +618,13 @@ sub cmd_cat
    my $self = shift;
    my ( $s3path ) = @_;
 
-   my $md5 = Digest::MD5->new;
-
-   my $exp_md5sum;
-   Future->needs_all(
-      $self->get_meta( $s3path, "md5sum" )
-         ->on_done( sub { ( $exp_md5sum ) = @_; chomp $exp_md5sum } ),
-      $self->{s3}->get_object(
-         key    => "data/$s3path",
-         on_chunk => sub {
-            my ( $header, $chunk ) = @_;
-            $md5->add( $chunk );
-            print $chunk;
-         },
-      )
+   $self->_get_file_chunks(
+      $s3path,
+      sub {
+         my ( $header, $chunk ) = @_;
+         print $chunk;
+      },
    )->get;
-
-   my $got_md5sum = $md5->hexdigest;
-   if( $exp_md5sum ne $got_md5sum ) {
-      die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
-   }
 }
 
 sub cmd_uncat
