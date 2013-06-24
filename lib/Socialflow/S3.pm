@@ -5,6 +5,8 @@ use warnings;
 use feature qw( switch );
 use base qw( IO::Async::Notifier );
 
+use Socialflow::S3::Crypt;
+
 use Future;
 use Future::Utils qw( fmap1 fmap_void );
 use IO::Async::Timer::Periodic;
@@ -61,6 +63,13 @@ sub configure
          bucket => $bucket,
          prefix => $prefix,
       );
+   }
+
+   my $crypto = delete $args{crypto} || $self->{crypto};
+   my $crypto_passphrase = delete $args{crypto_passphrase} || $self->{crypto_passphrase};
+   if( $crypto and $crypto_passphrase ) {
+      $self->{crypto}            = $crypto;
+      $self->{crypto_passphrase} = $crypto_passphrase;
    }
 
    $self->SUPER::configure( %args );
@@ -372,6 +381,8 @@ sub _put_file_from_parts
    my ( $s3path, $gen_parts, %args ) = @_;
    my $on_progress = $args{on_progress};
 
+   my @more_futures;
+
    my $md5 = Digest::MD5->new;
    my $more_func = sub {
       my ( $more ) = @_;
@@ -379,7 +390,30 @@ sub _put_file_from_parts
       return $more;
    };
 
-   $self->{s3}->put_object(
+   if( my $cryptoscheme = $self->{crypto} ) {
+      my $crypt = Socialflow::S3::Crypt->new(
+         scheme     => $cryptoscheme,
+         passphrase => $self->{crypto_passphrase},
+         random_iv  => 1,
+      );
+
+      push @more_futures, $self->put_meta( $s3path, "cryptokey",
+         join( ":", $cryptoscheme, unpack "H*", $crypt->iv ) . "\n",
+      );
+
+      my $cleartext_more_func = $more_func;
+      $more_func = sub {
+         my $cleartext = $cleartext_more_func->( @_ );
+         return $crypt->encrypt( $cleartext );
+      };
+   }
+   else {
+      push @more_futures, $self->{s3}->delete_object(
+         key => "meta/$s3path/cryptokey",
+      );
+   }
+
+   my $f = $self->{s3}->put_object(
       key       => "data/$s3path",
       meta      => $args{meta},
       gen_parts => sub {
@@ -414,6 +448,9 @@ sub _put_file_from_parts
    )->then( sub {
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
    });
+
+   return $f unless @more_futures;
+   return Future->needs_all( $f, @more_futures );
 }
 
 sub put_file
@@ -471,21 +508,53 @@ sub _get_file_chunks
    my ( $s3path, $on_chunk, %args ) = @_;
 
    my $md5 = Digest::MD5->new;
+   {
+      my $orig_on_chunk = $on_chunk;
+      $on_chunk = sub {
+         my ( $header, $chunk ) = @_;
+         $md5->add( $chunk );
+         $orig_on_chunk->( $header, $chunk );
+      }
+   }
 
-   Future->needs_all(
-      $self->get_meta( $s3path, "md5sum" )
-         ->transform( done => sub { chomp $_[0]; $_[0] } ),
-      $self->{s3}->get_object(
-         key    => "data/$s3path",
-         on_chunk => sub {
-            my ( $header, $chunk ) = @_;
-            $md5->add( $chunk );
+   ( $self->get_meta( $s3path, "cryptokey" )->then( sub {
+      chomp $_[0];
+      my ( $cryptoscheme, $iv_hex ) = split m/:/, $_[0];
+      my $iv = pack "H*", $iv_hex;
 
-            $on_chunk->( $header, $chunk );
-         },
+      my $crypt = Socialflow::S3::Crypt->new(
+         scheme     => $cryptoscheme,
+         passphrase => $self->{crypto_passphrase},
+         iv         => $iv,
+      );
+
+      my $plaintext_on_chunk = $on_chunk;
+      $on_chunk = sub {
+         my ( $header, $chunk ) = @_;
+         my $plaintext = $crypt->decrypt( $chunk );
+         $plaintext_on_chunk->( $header, $plaintext );
+      };
+
+      Future->new->done;
+   })->or_else( sub {
+      my ( $error, $request, $response ) = $_[0]->failure;
+      return Future->new->done if $response->code == 404;
+      return $_[0];
+   }) )->then( sub {
+      Future->needs_all(
+         $self->get_meta( $s3path, "md5sum" )
+            ->transform( done => sub { chomp $_[0]; $_[0] } ),
+         $self->{s3}->get_object(
+            key    => "data/$s3path",
+            on_chunk => sub {
+               my ( $header, $chunk ) = @_;
+               $on_chunk->( $header, $chunk );
+            },
+         )
       )
-   )->then( sub {
+   })->then( sub {
       my ( $exp_md5sum, undef, $header, $meta ) = @_;
+      $on_chunk->( $header, undef ); # Indicate EOF
 
       my $got_md5sum = $md5->hexdigest;
       if( $exp_md5sum ne $got_md5sum ) {

@@ -22,6 +22,8 @@ my $s3 = Socialflow::S3->new(
    secret_key => $config->{secret_key},
    bucket     => $config->{bucket},
    ssl        => $config->{ssl},
+   crypto     => $config->{crypto},
+   crypto_passphrase => $config->{crypto_passphrase},
 );
 $loop->add( $s3 );
 
