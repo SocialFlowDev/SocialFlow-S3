@@ -656,15 +656,22 @@ sub cmd_ls
    if( $LONG ) {
       @files = ( fmap1 {
          my $key = $_[0]->{key};
-         $self->{s3}->head_object(
-            key => $key
+         ( my $metapath = $key ) =~ s{^data/}{meta/};
+         Future->needs_all(
+            $self->{s3}->head_object(
+               key => $key
+            ),
+            $self->{s3}->get_object(
+               key => "$metapath/cryptokey"
+            )->else( sub { Future->new->done( undef ) } ),
          )->then( sub {
-            my ( $header, $meta ) = @_;
+            my ( $header, $meta, $cryptokey ) = @_;
 
             return Future->new->done( {
                name => substr( $key, 5 ),
                size => $header->content_length,
                mtime => ( defined $meta->{Mtime} ? strptime_iso8601( $meta->{Mtime} ) : undef ),
+               enc   => defined $cryptokey,
             } );
          });
       } foreach => $keys, return => $self->loop->new_future, concurrent => 20 )->get;
@@ -683,7 +690,7 @@ sub cmd_ls
             # Timestamps in local timezone
             my @mtime = localtime $e->{mtime};
             my $timestamp = defined $e->{mtime} ? strftime( "%Y-%m-%d %H:%M:%S", @mtime ) : "-- unknown --";
-            printf "%-38s %15d %s\n", $name, $e->{size}, $timestamp;
+            printf "%-38s %15d %s %s\n", $name, $e->{size}, $timestamp, $e->{enc} ? "ENC" : "   ";
          }
          else {
             printf "%-38s\n", $name;
