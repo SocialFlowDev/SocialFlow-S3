@@ -385,7 +385,10 @@ sub _put_file_from_parts
       gen_parts => sub {
          my ( $part, $part_len ) = $gen_parts->() or return;
 
-         if( blessed $part and $part->isa( "Future" ) ) {
+         if( !ref $part ) {
+            return $more_func->( $part );
+         }
+         elsif( blessed $part and $part->isa( "Future" ) ) {
             return $part->then( sub {
                my ( $more ) = @_;
                return Future->new->done( $more_func->( $more ) );
@@ -444,6 +447,15 @@ sub put_file
 
       return $gen_value, $part_length;
    };
+
+# special-case for zero-byte long files as otherwise we'll generate no
+# parts at all
+   $gen_parts = sub {
+      return if $read_pos > 0;
+
+      $read_pos = 1;
+      return "", 0;
+   } if $len_total == 0;
 
    $self->_put_file_from_parts( $s3path, $gen_parts,
       meta => {
