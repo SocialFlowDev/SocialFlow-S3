@@ -522,6 +522,9 @@ sub _get_file_chunks
       my ( $cryptoscheme, $iv_hex ) = split m/:/, $_[0];
       my $iv = pack "H*", $iv_hex;
 
+      defined $self->{crypto_passphrase} or
+         die "Cannot fetch $s3path - it is encrypted and no crypto_passphrase is defined";
+
       my $crypt = Socialflow::S3::Crypt->new(
          scheme     => $cryptoscheme,
          passphrase => $self->{crypto_passphrase},
