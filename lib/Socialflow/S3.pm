@@ -190,17 +190,28 @@ sub _start_progress_one
          my $now = time;
          my $rate = $$len_so_far_ref / ( $now - $start_time );
 
-         if( $rate > 0 ) {
-            my $eta = ( $len_total - $$len_so_far_ref ) / $rate;
-
-            printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
-               100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total,
-               $rate / 1000, ceil( $eta );
-         }
-         else {
-            printf "Done %.2f%% (%d of %d); --stalled--\n",
+         my $status;
+         if( defined $len_total ) {
+            $status = sprintf "Done %.2f%% (%d of %d) ",
                100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total;
          }
+         else {
+            $status = sprintf "Done %d ", $$len_so_far_ref;
+         }
+
+         if( $rate > 0 ) {
+            $status .= sprintf "%.2f KB/sec ", $rate / 1000;
+
+            if( defined $len_total ) {
+               my $eta = ( $len_total - $$len_so_far_ref ) / $rate;
+               $status .= sprintf "ETA %d sec", ceil( $eta );
+            }
+         }
+         else {
+            $status .= "--stalled--";
+         }
+
+         $self->print_status( $status );
       },
       interval => 1,
    );
@@ -765,7 +776,7 @@ sub cmd_get
       },
    )->get;
 
-   print "Successfully got $s3path to $localpath\n";
+   $self->print_message( "Successfully got $s3path to $localpath" );
 
    $self->remove_child( $progress_timer );
 }
@@ -786,7 +797,7 @@ sub cmd_put
       },
    )->get;
 
-   print "Successfully put $localpath to $s3path\n";
+   $self->print_message( "Successfully put $localpath to $s3path" );
 
    $self->remove_child( $progress_timer );
 }
