@@ -837,7 +837,10 @@ sub cmd_pull
 
    foreach ( @$keys ) {
       # Trim "data/" prefix
-      next unless $filter->( my $name = substr( $_->{key}, 5 ) );
+      my $name = substr $_->{key}, 5;
+      $name =~ s{^\Q$s3root\E/}{};
+
+      next unless $filter->( $name );
 
       $total_bytes += $_->{size};
       $total_files += 1;
