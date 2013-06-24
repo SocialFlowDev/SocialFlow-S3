@@ -728,13 +728,28 @@ sub cmd_cat
    my $self = shift;
    my ( $s3path ) = @_;
 
+   # Only do progress output if STDOUT is not a terminal
+   my $do_progress = !-t \*STDOUT;
+
+   my $len_so_far = 0;
+   my $progress_timer;
+
    $self->_get_file_chunks(
       $s3path,
       sub {
          my ( $header, $chunk ) = @_;
+         return unless defined $chunk;
+
+         if( $do_progress ) {
+            $progress_timer ||= $self->_start_progress_one( $header->content_length, \$len_so_far );
+            $len_so_far += length $chunk;
+         }
+
          print $chunk;
       },
    )->get;
+
+   $self->print_message( "Successfully got $s3path to <stdout>" ) if $do_progress;
 }
 
 sub cmd_uncat
