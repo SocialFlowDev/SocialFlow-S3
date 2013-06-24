@@ -512,7 +512,7 @@ sub _get_file_chunks
       my $orig_on_chunk = $on_chunk;
       $on_chunk = sub {
          my ( $header, $chunk ) = @_;
-         $md5->add( $chunk );
+         $md5->add( $chunk ) if defined $chunk;
          $orig_on_chunk->( $header, $chunk );
       }
    }
@@ -584,6 +584,7 @@ sub get_file
       $s3path,
       sub {
          my ( $header, $chunk ) = @_;
+         return unless defined $chunk;
 
          if( !defined $len_total ) {
             $len_so_far = 0;
