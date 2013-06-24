@@ -189,11 +189,18 @@ sub _start_progress_one
       on_tick => sub {
          my $now = time;
          my $rate = $$len_so_far_ref / ( $now - $start_time );
-         my $eta = ( $len_total - $$len_so_far_ref ) / $rate;
 
-         printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
-            100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total,
-            $rate / 1000, ceil( $eta );
+         if( $rate > 0 ) {
+            my $eta = ( $len_total - $$len_so_far_ref ) / $rate;
+
+            printf "Done %.2f%% (%d of %d) %.2f KB/sec; ETA %d sec\n",
+               100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total,
+               $rate / 1000, ceil( $eta );
+         }
+         else {
+            printf "Done %.2f%% (%d of %d); --stalled--\n",
+               100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total;
+         }
       },
       interval => 1,
    );
@@ -461,7 +468,7 @@ sub put_file
    open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
 
    my ( $len_total, $mtime ) = ( stat $fh )[7,9];
-   my $len_so_far = 0;
+   $args{on_progress}->( 0, $len_total );
 
    my $read_pos = 0;
 
