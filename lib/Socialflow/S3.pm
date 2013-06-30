@@ -431,11 +431,14 @@ sub _put_file_from_parts
       );
    }
 
+   my $part_offset = 0;
    my $f = $self->{s3}->put_object(
       key       => "data/$s3path",
       meta      => $args{meta},
       gen_parts => sub {
          my ( $part, $part_len ) = $gen_parts->() or return;
+         my $part_start = $part_offset;
+         $part_offset += $part_len;
 
          if( !ref $part ) {
             return $more_func->( $part );
@@ -455,7 +458,7 @@ sub _put_file_from_parts
                   my $more = $part->( length $buffer, $end - length $buffer );
                   $buffer .= $more_func->( $more );
                }
-               $on_progress->( $end );
+               $on_progress->( $part_start + $end );
                return substr( $buffer, $pos, $len );
             }, $part_len
          }
