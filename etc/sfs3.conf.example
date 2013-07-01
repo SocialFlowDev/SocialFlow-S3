@@ -1,0 +1,10 @@
+# vim:ft=yaml
+#
+# Rename this file to sfs3.conf
+#
+bucket: 'name-of-the-bucket/and-optional-subpath'
+access_key: 'Twenty char key here'
+secret_key: 'The forty character secret key goes here'
+# ssl: 1
+# crypto: 'aes-256-cfb'
+# crypto_passphrase: 'This string is hashed to use as the Rijndael key'
