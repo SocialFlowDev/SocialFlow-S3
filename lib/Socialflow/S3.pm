@@ -905,6 +905,8 @@ sub cmd_push
          my ( $skip ) = @_;
          if( $skip ) {
             $self->print_message( "SKIP  $localpath => $s3path" );
+            $completed_files += 1;
+            $completed_bytes += $size;
             return Future->new->done;
          }
 
@@ -983,6 +985,8 @@ sub cmd_pull
          my ( $skip ) = @_;
          if( $skip ) {
             $self->print_message( "SKIP  $localpath <= $s3path" );
+            $completed_files += 1;
+            $completed_bytes += $size;
             return Future->new->done;
          }
 
