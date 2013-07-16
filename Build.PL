@@ -6,6 +6,7 @@ use Module::Build;
 my $build = Module::Build->new(
    module_name => 'Socialflow::S3',
    dist_abstract => 'Amazon S3 tool for Socialflow',
+   dist_version => 0,
    requires => {
       'Crypt::Rijndael' => 0,
       'Future' => '0.14', # fmap_void
