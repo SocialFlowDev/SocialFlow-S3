@@ -889,8 +889,9 @@ sub cmd_push
       $total_files, $total_bytes, $total_bytes / (1024*1024) );
 
    my $completed_files = 0;
+   my $skipped_files   = 0;
    my $completed_bytes = 0;
-   my $skipped_bytes = 0;
+   my $skipped_bytes   = 0;
 
    my @uploads;
    my $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
@@ -908,6 +909,7 @@ sub cmd_push
             $self->print_message( "SKIP  $localpath => $s3path" );
             $completed_files += 1;
             $completed_bytes += $size;
+            $skipped_files   += 1;
             $skipped_bytes   += $size;
 
             $timer->invoke_event( on_tick => );
@@ -934,7 +936,10 @@ sub cmd_push
      return => $self->loop->new_future,
      concurrent => $concurrent )->get;
 
-   $self->print_message( "All files done" );
+   $self->print_message( sprintf "All files done\n" . 
+      "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
+      $completed_files, $completed_files - $skipped_files, $skipped_files,
+      $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
    $self->remove_child( $timer );
 }
 
@@ -973,6 +978,7 @@ sub cmd_pull
       $total_files, $total_bytes, $total_bytes / (1024*1024) );
 
    my $completed_files = 0;
+   my $skipped_files   = 0;
    my $completed_bytes = 0;
    my $skipped_bytes   = 0;
 
@@ -992,6 +998,7 @@ sub cmd_pull
             $self->print_message( "SKIP  $localpath <= $s3path" );
             $completed_files += 1;
             $completed_bytes += $size;
+            $skipped_files   += 1;
             $skipped_bytes   += $size;
             return Future->new->done;
          }
@@ -1017,7 +1024,10 @@ sub cmd_pull
      return => $self->loop->new_future,
      concurrent => $concurrent )->get;
 
-   $self->print_message( "All files done" );
+   $self->print_message( sprintf "All files done\n" . 
+      "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
+      $completed_files, $completed_files - $skipped_files, $skipped_files,
+      $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
    $self->remove_child( $timer );
 }
 
