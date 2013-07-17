@@ -245,7 +245,7 @@ sub _start_progress_bulk
             my ( $s3path, $total, $done ) = @$_;
 
             if( $done eq "test" ) {
-               sprintf "  [--testing--] %s\n", $s3path
+               sprintf "  [-- testing %d --] %s\n", $total, $s3path
             }
             else {
                $done_bytes += $done;
