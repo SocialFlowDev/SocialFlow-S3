@@ -379,10 +379,16 @@ sub test_skip
                $localmd5_f,
                $self->get_meta( $s3path, "md5sum" )
                   ->transform( done => sub { chomp $_[0]; $_[0] } ),
-            );
-         })->then( sub {
-            my ( $localmd5, $s3md5 ) = @_;
-            return Future->new->done( $localmd5 eq $s3md5 );
+            )->then( sub {
+               my ( $localmd5, $s3md5 ) = @_;
+               return Future->new->done( $localmd5 eq $s3md5 );
+            })->or_else( sub {
+               my $f = shift;
+               my ( $failure, $request, $response ) = $f->failure;
+               # Missind md5sum == don't skip; anything else == error
+               return Future->new->done( 0 ) if $response && $response->code == 404;
+               return $_[0];
+            });
          });
       }
       default {
