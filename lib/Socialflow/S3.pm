@@ -350,7 +350,7 @@ sub test_skip
             );
          })->or_else( sub {
             my ( $error, $request, $response ) = $_[0]->failure;
-            return Future->new->done( 0 ) if $response->code == 404;
+            return Future->new->done( 0 ) if $response && $response->code == 404;
             return $_[0];
          });
       }
