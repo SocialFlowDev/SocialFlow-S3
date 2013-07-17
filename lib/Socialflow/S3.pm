@@ -244,8 +244,13 @@ sub _start_progress_bulk
          my $slotstats = join "", map {
             my ( $s3path, $total, $done ) = @$_;
 
-            $done_bytes += $done;
-            sprintf "  [%6d of %6d; %2.1f%%] %s\n", $done, $total, 100 * $done / ($total+0.001), $s3path;
+            if( $done eq "test" ) {
+               sprintf "  [--testing--] %s\n", $s3path
+            }
+            else {
+               $done_bytes += $done;
+               sprintf "  [%6d of %6d; %2.1f%%] %s\n", $done, $total, 100 * $done / ($total+0.001), $s3path;
+            }
          } @$slots;
 
          # Maintain a 30-second time queue of bytes actually transferred (i.e. not skipped)
@@ -908,6 +913,8 @@ sub cmd_push
       # Allow $s3root="" to mean upload into root
       my $s3path    = join "/", grep { length } $s3root, $relpath;
 
+      push @uploads, my $slot = [ $s3path, $size, "test" ];
+
       $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
          my ( $skip ) = @_;
          if( $skip ) {
@@ -917,12 +924,13 @@ sub cmd_push
             $skipped_files   += 1;
             $skipped_bytes   += $size;
 
+            @uploads = grep { $_ != $slot } @uploads;
             $timer->invoke_event( on_tick => );
             return Future->new->done;
          }
 
          $self->print_message( "START $localpath => $s3path" );
-         push @uploads, my $slot = [ $s3path, $size, 0 ];
+         $slot->[2] = 0;
          $timer->invoke_event( on_tick => );
 
          return $self->put_file(
