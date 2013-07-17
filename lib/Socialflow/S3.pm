@@ -227,7 +227,7 @@ use constant {
 sub _start_progress_bulk
 {
    my $self = shift;
-   my ( $slots, $total_files, $total_bytes, $completed_files_ref, $completed_bytes_ref ) = @_;
+   my ( $slots, $total_files, $total_bytes, $completed_files_ref, $completed_bytes_ref, $skipped_bytes_ref ) = @_;
 
    my $start_time = time;
    my @times;
@@ -248,8 +248,8 @@ sub _start_progress_bulk
             sprintf "  [%6d of %6d; %2.1f%%] %s\n", $done, $total, 100 * $done / ($total+0.001), $s3path;
          } @$slots;
 
-         # Maintain a 30-second time queue
-         unshift @times, [ $done_bytes, time ];
+         # Maintain a 30-second time queue of bytes actually transferred (i.e. not skipped)
+         unshift @times, [ $done_bytes - $$skipped_bytes_ref, time ];
          pop @times while @times > 30;
 
          # A reasonable estimtate of data rate is 50% of last second, 30% of last 30 seconds, 20% overall
@@ -890,9 +890,10 @@ sub cmd_push
 
    my $completed_files = 0;
    my $completed_bytes = 0;
+   my $skipped_bytes = 0;
 
    my @uploads;
-   my $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes );
+   my $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
 
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
@@ -907,6 +908,7 @@ sub cmd_push
             $self->print_message( "SKIP  $localpath => $s3path" );
             $completed_files += 1;
             $completed_bytes += $size;
+            $skipped_bytes   += $size;
             return Future->new->done;
          }
 
@@ -970,9 +972,10 @@ sub cmd_pull
 
    my $completed_files = 0;
    my $completed_bytes = 0;
+   my $skipped_bytes   = 0;
 
    my @downloads;
-   my $timer = $self->_start_progress_bulk( \@downloads, $total_files, $total_bytes, \$completed_files, \$completed_bytes );
+   my $timer = $self->_start_progress_bulk( \@downloads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
 
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
@@ -987,6 +990,7 @@ sub cmd_pull
             $self->print_message( "SKIP  $localpath <= $s3path" );
             $completed_files += 1;
             $completed_bytes += $size;
+            $skipped_bytes   += $size;
             return Future->new->done;
          }
 
