@@ -909,6 +909,8 @@ sub cmd_push
             $completed_files += 1;
             $completed_bytes += $size;
             $skipped_bytes   += $size;
+
+            $timer->invoke_event( on_tick => );
             return Future->new->done;
          }
 
