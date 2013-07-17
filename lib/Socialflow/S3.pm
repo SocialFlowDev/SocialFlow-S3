@@ -326,6 +326,30 @@ sub get_meta
    );
 }
 
+# Thre's no harm in DELETEing an object that does not exist, but if we test first then we
+# can avoid giving DELETE permission unnecessarily
+sub delete_meta
+{
+   my $self = shift;
+   my ( $path, $metaname ) = @_;
+
+   $self->{s3}->get_object(
+      key => "meta/$path/$metaname"
+   )->followed_by( sub {
+      my $f = shift;
+
+      if( $f->failure ) {
+         my ( $failure, $request, $response ) = $f->failure;
+         return Future->new->done if $response and $response->code == 404;
+         return $f;
+      }
+
+      $self->{s3}->delete_object(
+         key => "meta/$path/$metaname",
+      )
+   });
+}
+
 sub test_skip
 {
    my $self = shift;
@@ -436,9 +460,7 @@ sub _put_file_from_parts
       };
    }
    else {
-      push @more_futures, $self->{s3}->delete_object(
-         key => "meta/$s3path/cryptokey",
-      );
+      push @more_futures, $self->delete_meta( $s3path, "cryptokey" );
    }
 
    my $part_offset = 0;
