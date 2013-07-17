@@ -940,7 +940,7 @@ sub cmd_push
       $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
          my ( $skip ) = @_;
          if( $skip ) {
-            $self->print_message( "SKIP  $localpath => $s3path" );
+            $self->print_message( "SKIP  $relpath" );
             $completed_files += 1;
             $completed_bytes += $size;
             $skipped_files   += 1;
@@ -951,7 +951,7 @@ sub cmd_push
             return Future->new->done;
          }
 
-         $self->print_message( "START $localpath => $s3path" );
+         $self->print_message( "START $relpath" );
          $slot->[2] = 0;
          $timer->invoke_event( on_tick => );
 
@@ -959,7 +959,7 @@ sub cmd_push
             $localpath, $s3path,
             on_progress => sub { ( $slot->[2] ) = @_ },
          )->on_done( sub {
-            $self->print_message( "DONE  $localpath => $s3path" );
+            $self->print_message( "DONE  $relpath" );
             $completed_files += 1;
             $completed_bytes += $size;
 
@@ -1030,7 +1030,7 @@ sub cmd_pull
       $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
          my ( $skip ) = @_;
          if( $skip ) {
-            $self->print_message( "SKIP  $localpath <= $s3path" );
+            $self->print_message( "SKIP  $relpath" );
             $completed_files += 1;
             $completed_bytes += $size;
             $skipped_files   += 1;
@@ -1038,7 +1038,7 @@ sub cmd_pull
             return Future->new->done;
          }
 
-         $self->print_message( "START $localpath <= $s3path" );
+         $self->print_message( "START $relpath" );
          push @downloads, my $slot = [ $s3path, $size, 0 ];
          $timer->invoke_event( on_tick => );
 
@@ -1047,7 +1047,7 @@ sub cmd_pull
             on_progress => sub { ( $slot->[2] ) = @_ },
             mkdir => 1,
          )->on_done( sub {
-            $self->print_message( "DONE  $localpath <= $s3path" );
+            $self->print_message( "DONE  $relpath" );
             $completed_files += 1;
             $completed_bytes += $size;
 
