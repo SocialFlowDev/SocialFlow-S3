@@ -337,16 +337,19 @@ sub test_skip
          my ( $size, $mtime ) = ( stat $localpath )[7,9];
          defined $size or return Future->new->done( 0 );
 
-         $f = $self->{s3}->head_object(
-            key => "data/$s3path"
+         # Fetch the md5sum meta anyway even if we aren't going to use it, because if
+         # it's missing we definitely want to re-upload
+         $f = Future->needs_all(
+            $self->{s3}->head_object( key => "data/$s3path" ),
+            $self->get_meta( $s3path, "md5sum" )->transform( done => sub { chomp $_[0]; $_[0] } ),
          )->then( sub {
-            my ( $header, $meta ) = @_;
+            my ( $header, $meta, $s3md5 ) = @_;
 
             return Future->new->done( 0 ) unless defined $meta->{Mtime};
 
             return Future->new->done(
-               $header->content_length == $size &&
-               strptime_iso8601( $meta->{Mtime} ) == $mtime
+               $header->content_length == $size && strptime_iso8601( $meta->{Mtime} ) == $mtime,
+               $s3md5,
             );
          })->or_else( sub {
             my ( $error, $request, $response ) = $_[0]->failure;
@@ -356,7 +359,7 @@ sub test_skip
       }
       when( "md5sum" ) {
          $f = $self->test_skip( "stat", $s3path, $localpath )->then( sub {
-            my ( $skip ) = @_;
+            my ( $skip, $s3md5 ) = @_;
             return Future->new->done( 0 ) if !$skip;
 
             # TODO: IO::Async probably wants a Future-returning process running method
@@ -375,12 +378,8 @@ sub test_skip
                },
             );
 
-            Future->needs_all(
-               $localmd5_f,
-               $self->get_meta( $s3path, "md5sum" )
-                  ->transform( done => sub { chomp $_[0]; $_[0] } ),
-            )->then( sub {
-               my ( $localmd5, $s3md5 ) = @_;
+            $localmd5_f->then( sub {
+               my ( $localmd5 ) = @_;
                return Future->new->done( $localmd5 eq $s3md5 );
             })->or_else( sub {
                my $f = shift;
