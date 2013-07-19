@@ -42,6 +42,8 @@ sub _init
 
    $args->{s3}->{http}->configure( max_connections_per_host => 0 );
 
+   $args->{timeout_meta} //= 10;
+
    $self->{status_lines} = 0;
 
    $self->SUPER::_init( $args );
@@ -51,6 +53,10 @@ sub configure
 {
    my $self = shift;
    my %args = @_;
+
+   foreach (qw( timeout_meta )) {
+      $self->{$_} = delete $args{$_} if exists $args{$_};
+   }
 
    if( my $s3 = delete $args{s3} ) {
       $self->remove_child( delete $self->{s3} ) if $self->{s3};
@@ -313,6 +319,7 @@ sub put_meta
    $self->{s3}->put_object(
       key => "meta/$path/$metaname",
       value => $value,
+      timeout => $self->{timeout_meta},
    );
 }
 
@@ -323,6 +330,7 @@ sub get_meta
 
    $self->{s3}->get_object(
       key => "meta/$path/$metaname",
+      timeout => $self->{timeout_meta},
    );
 }
 
@@ -334,7 +342,8 @@ sub delete_meta
    my ( $path, $metaname ) = @_;
 
    $self->{s3}->get_object(
-      key => "meta/$path/$metaname"
+      key => "meta/$path/$metaname",
+      timeout => $self->{timeout_meta},
    )->followed_by( sub {
       my $f = shift;
 
@@ -346,6 +355,7 @@ sub delete_meta
 
       $self->{s3}->delete_object(
          key => "meta/$path/$metaname",
+         timeout => $self->{timeout_meta},
       )
    });
 }
