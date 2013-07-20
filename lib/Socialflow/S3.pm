@@ -42,7 +42,8 @@ sub _init
 
    $args->{s3}->{http}->configure( max_connections_per_host => 0 );
 
-   $args->{timeout_meta} //= 10;
+   $args->{timeout}       //= 10;
+   $args->{stall_timeout} //= 30;
 
    $self->{status_lines} = 0;
 
@@ -54,13 +55,16 @@ sub configure
    my $self = shift;
    my %args = @_;
 
-   foreach (qw( timeout_meta )) {
-      $self->{$_} = delete $args{$_} if exists $args{$_};
-   }
-
    if( my $s3 = delete $args{s3} ) {
       $self->remove_child( delete $self->{s3} ) if $self->{s3};
       $self->add_child( $self->{s3} = $s3 );
+   }
+
+   foreach (qw( timeout stall_timeout )) {
+      next unless exists $args{$_};
+
+      $self->{s3}->configure( $_ => $args{$_} );
+      $self->{$_} = delete $args{$_};
    }
 
    if( my $bucket = delete $args{bucket} ) {
@@ -319,7 +323,7 @@ sub put_meta
    $self->{s3}->put_object(
       key => "meta/$path/$metaname",
       value => $value,
-      timeout => $self->{timeout_meta},
+      timeout => $self->{timeout},
    );
 }
 
@@ -330,7 +334,7 @@ sub get_meta
 
    $self->{s3}->get_object(
       key => "meta/$path/$metaname",
-      timeout => $self->{timeout_meta},
+      timeout => $self->{timeout},
    );
 }
 
@@ -343,7 +347,7 @@ sub delete_meta
 
    $self->{s3}->get_object(
       key => "meta/$path/$metaname",
-      timeout => $self->{timeout_meta},
+      timeout => $self->{timeout},
    )->followed_by( sub {
       my $f = shift;
 
@@ -355,7 +359,6 @@ sub delete_meta
 
       $self->{s3}->delete_object(
          key => "meta/$path/$metaname",
-         timeout => $self->{timeout_meta},
       )
    });
 }

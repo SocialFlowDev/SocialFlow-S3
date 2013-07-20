@@ -14,7 +14,7 @@ my $build = Module::Build->new(
       'IO::Async::Loop' => 0,
       'IO::Async::Timer::Periodic' => 0,
       'Net::Async::HTTP' => '0.22',
-      'Net::Async::Webservice::S3' => '0.09',
+      'Net::Async::Webservice::S3' => '0.10',
       'POSIX::strptime' => 0,
       'YAML' => 0,
    },
