@@ -44,6 +44,7 @@ Commands:
    get S3FILE [LOCALFILE]
    put LOCALFILE [S3FILE]
    rm S3PATTERN
+   version
 
    push LOCALROOT S3ROOT
      [--concurrent=N] [--all] [--md5sum] [--only=PATTERN]* [--exclude=PATTERN]*
@@ -65,6 +66,10 @@ given( shift @ARGV ) {
    when([ undef, "help" ]) {
       do_help;
       exit 0;
+   }
+
+   when( "version" ) {
+     print "sfs3 version: $Socialflow::S3::VERSION\n";
    }
 
    when( "ls" ) {
