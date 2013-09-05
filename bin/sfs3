@@ -14,18 +14,22 @@ use YAML qw( LoadFile );
 
 Getopt::Long::Configure( "bundling" );
 
-my $config = LoadFile( "etc/sfs3.conf" );
+# Don't load the config file until we actually need it
+sub s3 {
+  my $config = LoadFile( "etc/sfs3.conf" );
 
-my $loop = IO::Async::Loop->new;
-my $s3 = Socialflow::S3->new(
-   access_key => $config->{access_key},
-   secret_key => $config->{secret_key},
-   bucket     => $config->{bucket},
-   ssl        => $config->{ssl},
-   crypto     => $config->{crypto},
-   crypto_passphrase => $config->{crypto_passphrase},
-);
-$loop->add( $s3 );
+  my $loop = IO::Async::Loop->new;
+  my $s3 = Socialflow::S3->new(
+     access_key => $config->{access_key},
+     secret_key => $config->{secret_key},
+     bucket     => $config->{bucket},
+     ssl        => $config->{ssl},
+     crypto     => $config->{crypto},
+     crypto_passphrase => $config->{crypto_passphrase},
+  );
+  $loop->add( $s3 );
+  $s3
+}
 
 sub do_help
 {
@@ -70,23 +74,23 @@ given( shift @ARGV ) {
       ) or exit 1;
       my $s3path = shift @ARGV;
 
-      $s3->cmd_ls( $s3path, long => $LONG, recurse => $RECURSE );
+      s3()->cmd_ls( $s3path, long => $LONG, recurse => $RECURSE );
    }
    when( "cat" ) {
       my $s3path = shift @ARGV;
 
-      $s3->cmd_cat( $s3path );
+      s3()->cmd_cat( $s3path );
    }
    when( "uncat" ) {
       my $s3path = shift @ARGV;
 
-      $s3->cmd_uncat( $s3path );
+      s3()->cmd_uncat( $s3path );
    }
    when( "get" ) {
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // basename( $s3path );
 
-      $s3->cmd_get( $s3path, $localpath );
+      s3()->cmd_get( $s3path, $localpath );
    }
    when( "put" ) {
       my $localpath = shift @ARGV;
@@ -98,12 +102,12 @@ given( shift @ARGV ) {
          $s3path .= basename( $localpath );
       }
 
-      $s3->cmd_put( $localpath, $s3path );
+      s3()->cmd_put( $localpath, $s3path );
    }
    when( "rm" ) {
       my $s3path = shift @ARGV;
 
-      $s3->cmd_rm( $s3path );
+      s3()->cmd_rm( $s3path );
    }
    when( "push" ) {
       my $SKIP_LOGIC;
@@ -117,7 +121,7 @@ given( shift @ARGV ) {
       my $localroot = shift @ARGV;
       my $s3root = shift @ARGV // $localroot;
 
-      $s3->cmd_push( $localroot, $s3root,
+      s3()->cmd_push( $localroot, $s3root,
          concurrent => $CONCURRENT,
          skip_logic => $SKIP_LOGIC,
          only => \@ONLYS, exclude => \@EXCLUDES,
@@ -135,7 +139,7 @@ given( shift @ARGV ) {
       my $s3root = shift @ARGV;
       my $localroot = shift @ARGV // $s3root;
 
-      $s3->cmd_pull( $s3root, $localroot,
+      s3()->cmd_pull( $s3root, $localroot,
          concurrent => $CONCURRENT,
          skip_logic => $SKIP_LOGIC,
          only => \@ONLYS, exclude => \@EXCLUDES,
@@ -147,7 +151,7 @@ given( shift @ARGV ) {
    # development
    when( "ll-ls" ) {
       my $s3path = shift @ARGV;
-      my ( $keys, $prefixes ) = $s3->{s3}->list_bucket(
+      my ( $keys, $prefixes ) = s3()->{s3}->list_bucket(
          prefix => $s3path, delimiter => "/",
       )->get;
       print "$_->{key}\n" for @$keys;
@@ -155,20 +159,20 @@ given( shift @ARGV ) {
    }
    when( "ll-cat" ) {
       my $s3path = shift @ARGV;
-      print scalar $s3->{s3}->get_object(
+      print scalar s3()->{s3}->get_object(
          key => $s3path,
       )->get;
    }
    when( "ll-uncat" ) {
       my $s3path = shift @ARGV;
-      $s3->{s3}->put_object(
+      s3()->{s3}->put_object(
          key => $s3path,
          value => do { local $/; scalar <STDIN> },
       )->get;
    }
    when( "ll-rm" ) {
       my $s3path = shift @ARGV;
-      $s3->{s3}->delete_object(
+      s3()->{s3}->delete_object(
          key => $s3path,
       )->get;
    }
