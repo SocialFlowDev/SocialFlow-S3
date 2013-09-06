@@ -15,12 +15,13 @@ use YAML qw( LoadFile );
 Getopt::Long::Configure( "bundling" );
 
 sub config {
+  my $cfg_file = $_[0] // "etc/sfs3.conf";
   # YAML::LoadFile doesn't give nice errors when the file doens't exist.
-  unless ( -e "etc/sfs3.conf" ) {
-    print STDERR "Couldn't open etc/sfs3.conf\n";
+  unless ( -e $cfg_file ) {
+    print STDERR "Config file $cfg_file doesn't exist\n";
     exit 1;
   }
-  my $config = LoadFile( "etc/sfs3.conf" );
+  my $config = LoadFile( $cfg_file );
 
   for my $req_key ( qw/access_key secret_key bucket/ ) {
     unless ( exists $config->{$req_key} ) {
@@ -34,7 +35,7 @@ sub config {
 
 # Don't load the config file until we actually need it
 sub s3 {
-  my $config = config();
+  my $config = config( $_[0] );
 
   my $loop = IO::Async::Loop->new;
   my $s3 = Socialflow::S3->new(
@@ -53,7 +54,7 @@ sub do_help
 {
    print STDERR <<'EOF';
 
-Usage: sfs3 COMMAND [OPTIONS...]
+Usage: sfs3 COMMAND [--config=file] [OPTIONS...]
 
 Commands:
    ls [--long] [--recursive] S3PATH
@@ -94,28 +95,41 @@ given( shift @ARGV ) {
       GetOptions(
          'l|long' => \my $LONG,
          'r|recursive' => \my $RECURSE,
+         'f|config=s' => \my $cfg_file,
       ) or exit 1;
       my $s3path = shift @ARGV;
 
-      s3()->cmd_ls( $s3path, long => $LONG, recurse => $RECURSE );
+      s3( $cfg_file )->cmd_ls( $s3path, long => $LONG, recurse => $RECURSE );
    }
    when( "cat" ) {
+      GetOptions(
+         'f|config=s' => \my $cfg_file,
+      ) or exit 1;
       my $s3path = shift @ARGV;
 
-      s3()->cmd_cat( $s3path );
+      s3( $cfg_file )->cmd_cat( $s3path );
    }
    when( "uncat" ) {
+      GetOptions(
+         'f|config=s' => \my $cfg_file,
+      ) or exit 1;
       my $s3path = shift @ARGV;
 
-      s3()->cmd_uncat( $s3path );
+      s3( $cfg_file )->cmd_uncat( $s3path );
    }
    when( "get" ) {
+      GetOptions(
+         'f|config=s' => \my $cfg_file,
+      ) or exit 1;
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // basename( $s3path );
 
-      s3()->cmd_get( $s3path, $localpath );
+      s3( $cfg_file )->cmd_get( $s3path, $localpath );
    }
    when( "put" ) {
+      GetOptions(
+         'f|config=s' => \my $cfg_file,
+      ) or exit 1;
       my $localpath = shift @ARGV;
       my $s3path = shift @ARGV;
       if( !defined $s3path ) {
@@ -125,12 +139,15 @@ given( shift @ARGV ) {
          $s3path .= basename( $localpath );
       }
 
-      s3()->cmd_put( $localpath, $s3path );
+      s3( $cfg_file )->cmd_put( $localpath, $s3path );
    }
    when( "rm" ) {
+      GetOptions(
+         'f|config=s' => \my $cfg_file,
+      ) or exit 1;
       my $s3path = shift @ARGV;
 
-      s3()->cmd_rm( $s3path );
+      s3( $cfg_file )->cmd_rm( $s3path );
    }
    when( "push" ) {
       my $SKIP_LOGIC;
@@ -140,11 +157,12 @@ given( shift @ARGV ) {
          '5|md5sum'       => sub { $SKIP_LOGIC = "md5sum" },
          'only=s'         => \my @ONLYS,
          'exclude=s'      => \my @EXCLUDES,
+         'f|config=s'       => \my $cfg_file,
       ) or exit 1;
       my $localroot = shift @ARGV;
       my $s3root = shift @ARGV // $localroot;
 
-      s3()->cmd_push( $localroot, $s3root,
+      s3( $cfg_file )->cmd_push( $localroot, $s3root,
          concurrent => $CONCURRENT,
          skip_logic => $SKIP_LOGIC,
          only => \@ONLYS, exclude => \@EXCLUDES,
@@ -158,11 +176,12 @@ given( shift @ARGV ) {
          '5|md5sum'       => sub { $SKIP_LOGIC = "md5sum" },
          'only=s'         => \my @ONLYS,
          'exclude=s'      => \my @EXCLUDES,
+         'f|config=s'       => \my $cfg_file,
       ) or exit 1;
       my $s3root = shift @ARGV;
       my $localroot = shift @ARGV // $s3root;
 
-      s3()->cmd_pull( $s3root, $localroot,
+      s3( $cfg_file )->cmd_pull( $s3root, $localroot,
          concurrent => $CONCURRENT,
          skip_logic => $SKIP_LOGIC,
          only => \@ONLYS, exclude => \@EXCLUDES,
