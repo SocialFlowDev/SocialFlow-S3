@@ -14,9 +14,27 @@ use YAML qw( LoadFile );
 
 Getopt::Long::Configure( "bundling" );
 
+sub config {
+  # YAML::LoadFile doesn't give nice errors when the file doens't exist.
+  unless ( -e "etc/sfs3.conf" ) {
+    print STDERR "Couldn't open etc/sfs3.conf\n";
+    exit 1;
+  }
+  my $config = LoadFile( "etc/sfs3.conf" );
+
+  for my $req_key ( qw/access_key secret_key bucket/ ) {
+    unless ( exists $config->{$req_key} ) {
+      print STDERR "Cofing was missing required key $req_key\n";
+      exit 1;
+    }
+  }
+
+  $config;
+}
+
 # Don't load the config file until we actually need it
 sub s3 {
-  my $config = LoadFile( "etc/sfs3.conf" );
+  my $config = config();
 
   my $loop = IO::Async::Loop->new;
   my $s3 = Socialflow::S3->new(
