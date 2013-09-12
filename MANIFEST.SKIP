@@ -16,3 +16,4 @@ _build
 .*\.o
 ^MYMETA.yml$
 ^MYMETA\.json$
+^\.git/

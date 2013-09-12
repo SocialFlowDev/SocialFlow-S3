@@ -1,0 +1,6 @@
+Changes for SocialFlow-S3 module
+
+0.01 - 2013-09-12
+ - Initial private release.
+
+   Wan't a tagged version number so its clear what version we have deployed via puppet.

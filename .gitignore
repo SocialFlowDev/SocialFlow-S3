@@ -1,3 +1,8 @@
 /Build
 /_build/
 /MYMETA.*
+/META.*
+/MANIFEST.*
+/MANIFEST
+/README
+/Makefile.PL
