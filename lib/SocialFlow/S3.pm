@@ -26,7 +26,7 @@ use constant PART_SIZE => 100*1024*1024; # 100 MiB
 
 use constant FILES_AT_ONCE => 4;
 
-our $VERSION = "0.01";
+our $VERSION = "0.02";
 
 sub _init
 {
