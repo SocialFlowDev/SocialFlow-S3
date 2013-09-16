@@ -1,4 +1,4 @@
-package Socialflow::S3::Crypt;
+package SocialFlow::S3::Crypt;
 
 use strict;
 use warnings;

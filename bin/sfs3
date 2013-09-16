@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use feature qw( say switch );
 
-use Socialflow::S3;
+use SocialFlow::S3;
 
 use IO::Async::Loop;
 
@@ -38,7 +38,7 @@ sub s3 {
   my $config = config( $_[0] );
 
   my $loop = IO::Async::Loop->new;
-  my $s3 = Socialflow::S3->new(
+  my $s3 = SocialFlow::S3->new(
      access_key => $config->{access_key},
      secret_key => $config->{secret_key},
      bucket     => $config->{bucket},
@@ -88,7 +88,7 @@ given( shift @ARGV ) {
    }
 
    when( "version" ) {
-     print "sfs3 version: $Socialflow::S3::VERSION\n";
+     print "sfs3 version: $SocialFlow::S3::VERSION\n";
    }
 
    when( "ls" ) {

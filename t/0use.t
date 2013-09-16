@@ -5,6 +5,6 @@ use strict;
 
 use Test::More;
 
-use_ok( "Socialflow::S3" );
+use_ok( "SocialFlow::S3" );
 
 done_testing;

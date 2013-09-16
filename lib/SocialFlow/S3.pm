@@ -1,11 +1,11 @@
-package Socialflow::S3;
+package SocialFlow::S3;
 
 use strict;
 use warnings;
 use feature qw( switch );
 use base qw( IO::Async::Notifier );
 
-use Socialflow::S3::Crypt;
+use SocialFlow::S3::Crypt;
 
 use Future;
 use Future::Utils qw( fmap1 fmap_void );
@@ -458,7 +458,7 @@ sub _put_file_from_parts
    };
 
    if( my $cryptoscheme = $self->{crypto} ) {
-      my $crypt = Socialflow::S3::Crypt->new(
+      my $crypt = SocialFlow::S3::Crypt->new(
          scheme     => $cryptoscheme,
          passphrase => $self->{crypto_passphrase},
          random_iv  => 1,
@@ -593,7 +593,7 @@ sub _get_file_chunks
       defined $self->{crypto_passphrase} or
          die "Cannot fetch $s3path - it is encrypted and no crypto_passphrase is defined";
 
-      my $crypt = Socialflow::S3::Crypt->new(
+      my $crypt = SocialFlow::S3::Crypt->new(
          scheme     => $cryptoscheme,
          passphrase => $self->{crypto_passphrase},
          iv         => $iv,

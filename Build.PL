@@ -4,7 +4,7 @@ use warnings;
 use Module::Build;
 
 my $build = Module::Build->new(
-   module_name => 'Socialflow::S3',
+   module_name => 'SocialFlow::S3',
    dist_abstract => 'Amazon S3 tool for Socialflow',
    requires => {
       'Crypt::Rijndael' => 0,
