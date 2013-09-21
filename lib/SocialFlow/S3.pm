@@ -830,10 +830,15 @@ sub cmd_uncat
 sub cmd_get
 {
    my $self = shift;
-   my ( $s3path, $localpath ) = @_;
+   my ( $s3path, $localpath, %args ) = @_;
 
    my $len_so_far;
    my $progress_timer;
+
+   if( $args{no_overwrite} ) {
+      stat( $localpath ) and
+         die "Not overwriting local file $localpath (use the --force)\n";
+   }
 
    $self->get_file(
       $s3path, $localpath,
@@ -851,10 +856,32 @@ sub cmd_get
 sub cmd_put
 {
    my $self = shift;
-   my ( $localpath, $s3path ) = @_;
+   my ( $localpath, $s3path, %args ) = @_;
 
    my $len_so_far;
    my $progress_timer;
+
+   if( $args{no_overwrite} ) {
+      # TODO: There might be an "If-Not-Exists" header on S3 to do this
+      # better...
+      my ( $exists ) = $self->{s3}->head_object(
+         key => "data/$s3path",
+      )->followed_by( sub {
+         my $f = shift;
+         if( !$f->failure ) {
+            return Future->new->done( $f->get->code == 200 );
+         }
+         elsif( ( $f->failure )[2]->code == 404 ) {
+            return Future->new->done( 0 );
+         }
+         else {
+            $f->get; # propagate
+         }
+      })->get;
+
+      $exists and
+         die "Not overwriting S3 file $s3path (use the --force)\n";
+   }
 
    $self->put_file(
       $localpath, $s3path,
