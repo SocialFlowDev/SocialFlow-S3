@@ -820,7 +820,12 @@ sub cmd_cat
 sub cmd_uncat
 {
    my $self = shift;
-   my ( $s3path ) = @_;
+   my ( $s3path, %args ) = @_;
+
+   if( $args{no_overwrite} ) {
+      defined $self->stat_file( $s3path )->get and
+         die "Not overwriting S3 file $s3path (use the --force)\n";
+   }
 
    $self->add_child( my $stdin = IO::Async::Stream->new_for_stdin( on_read => sub { 0 } ) );
 

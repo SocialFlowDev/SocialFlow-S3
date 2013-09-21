@@ -64,7 +64,7 @@ Usage: sfs3 COMMAND [--config=file] [OPTIONS...]
 Commands:
    ls [--long] [--recursive] S3PATH
    cat S3FILE
-   uncat S3FILE
+   uncat [--force] S3FILE
    get [--force] S3FILE [LOCALFILE]
    put LOCALFILE [S3FILE]
    rm S3PATTERN
@@ -114,10 +114,11 @@ given( shift @ARGV ) {
    }
    when( "uncat" ) {
       GetOptions(
+         'f|force' => \my $FORCE,
       ) or exit 1;
       my $s3path = shift @ARGV;
 
-      s3()->cmd_uncat( $s3path );
+      s3()->cmd_uncat( $s3path, no_overwrite => !$FORCE );
    }
    when( "get" ) {
       GetOptions(
