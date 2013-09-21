@@ -443,6 +443,20 @@ sub test_skip
    return $f;
 }
 
+sub stat_file
+{
+   my $self = shift;
+   my ( $s3path ) = @_;
+
+   $self->{s3}->head_object(
+      key => "data/$s3path",
+   )->or_else( sub {
+      my $f = shift;
+      return Future->new->done( undef) if ( $f->failure )[2]->code == 404;
+      return $f; # propagate other errors
+   });
+}
+
 sub _put_file_from_parts
 {
    my $self = shift;
@@ -862,24 +876,7 @@ sub cmd_put
    my $progress_timer;
 
    if( $args{no_overwrite} ) {
-      # TODO: There might be an "If-Not-Exists" header on S3 to do this
-      # better...
-      my ( $exists ) = $self->{s3}->head_object(
-         key => "data/$s3path",
-      )->followed_by( sub {
-         my $f = shift;
-         if( !$f->failure ) {
-            return Future->new->done( $f->get->code == 200 );
-         }
-         elsif( ( $f->failure )[2]->code == 404 ) {
-            return Future->new->done( 0 );
-         }
-         else {
-            $f->get; # propagate
-         }
-      })->get;
-
-      $exists and
+      defined $self->stat_file( $s3path )->get and
          die "Not overwriting S3 file $s3path (use the --force)\n";
    }
 
