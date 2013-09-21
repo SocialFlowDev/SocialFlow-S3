@@ -15,7 +15,7 @@ use YAML qw( LoadFile );
 
 Getopt::Long::Configure(qw(bundling pass_through ));
 
-GetOptions( 'f|config=s' => \(my $CONFIG_FILE = "etc/sfs3.conf") ) or
+GetOptions( 'C|config=s' => \(my $CONFIG_FILE = "etc/sfs3.conf") ) or
    do_help(), exit 1;
 
 Getopt::Long::Configure(qw( no_pass_through ));
@@ -65,7 +65,7 @@ Commands:
    ls [--long] [--recursive] S3PATH
    cat S3FILE
    uncat S3FILE
-   get S3FILE [LOCALFILE]
+   get [--force] S3FILE [LOCALFILE]
    put LOCALFILE [S3FILE]
    rm S3PATTERN
    version
@@ -121,9 +121,13 @@ given( shift @ARGV ) {
    }
    when( "get" ) {
       GetOptions(
+         'f|force' => \my $FORCE,
       ) or exit 1;
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // basename( $s3path );
+
+      !$FORCE and stat( $localpath ) and
+         die "Not overwriting local file $localpath (use the --force)\n";
 
       s3()->cmd_get( $s3path, $localpath );
    }
