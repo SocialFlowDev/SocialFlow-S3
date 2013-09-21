@@ -813,10 +813,11 @@ sub cmd_uncat
    my $eof;
    my $gen_parts = sub {
       return if $eof;
-      return $stdin->read_exactly( PART_SIZE )
+      my $f = $stdin->read_exactly( PART_SIZE )
          ->on_done( sub {
             ( my $part, $eof ) = @_;
          });
+      return ( $f, PART_SIZE );
    };
 
    $self->_put_file_from_parts( $s3path, $gen_parts, 
