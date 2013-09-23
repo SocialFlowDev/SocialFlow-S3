@@ -139,9 +139,9 @@ sub _split_pattern
    my $prefix = join "/", @prefix;
    my $glob   = join "/", @prefix, @parts;
 
-   $prefix .= "/" if length $prefix;
-
    return ( $prefix ) if !@parts;
+
+   $prefix .= "/" if length $prefix;
 
    my $re = _fname_glob_to_re( $glob );
 
