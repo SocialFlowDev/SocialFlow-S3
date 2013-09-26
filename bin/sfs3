@@ -199,6 +199,15 @@ given( shift @ARGV ) {
       print "$_->{key}\n" for @$keys;
       print "$_\n" for @$prefixes;
    }
+   when( "ll-head" ) {
+      my $s3path = shift @ARGV;
+      my ( $header, $meta ) = s3()->{s3}->head_object(
+         key => $s3path,
+      )->get;
+      $header->scan( sub {
+         print "$_[0]: $_[1]\n";
+      });
+   }
    when( "ll-cat" ) {
       my $s3path = shift @ARGV;
       print scalar s3()->{s3}->get_object(
