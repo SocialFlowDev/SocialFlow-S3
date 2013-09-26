@@ -457,89 +457,16 @@ sub stat_file
    });
 }
 
-sub _put_file_from_parts
-{
-   my $self = shift;
-   my ( $s3path, $gen_parts, %args ) = @_;
-   my $on_progress = $args{on_progress};
-
-   my @more_futures;
-
-   my $md5 = Digest::MD5->new;
-   my $more_func = sub {
-      my ( $more ) = @_;
-      $md5->add( $more );
-      return $more;
-   };
-
-   if( my $cryptoscheme = $self->{crypto} ) {
-      my $crypt = SocialFlow::S3::Crypt->new(
-         scheme     => $cryptoscheme,
-         passphrase => $self->{crypto_passphrase},
-         random_iv  => 1,
-      );
-
-      push @more_futures, $self->put_meta( $s3path, "cryptokey",
-         join( ":", $cryptoscheme, unpack "H*", $crypt->iv ) . "\n",
-      );
-
-      my $cleartext_more_func = $more_func;
-      $more_func = sub {
-         my $cleartext = $cleartext_more_func->( @_ );
-         return $crypt->encrypt( $cleartext );
-      };
-   }
-   else {
-      push @more_futures, $self->delete_meta( $s3path, "cryptokey" );
-   }
-
-   my $part_offset = 0;
-   my $f = $self->{s3}->put_object(
-      key       => "data/$s3path",
-      meta      => $args{meta},
-      gen_parts => sub {
-         my ( $part, $part_len ) = $gen_parts->() or return;
-         my $part_start = $part_offset;
-         $part_offset += $part_len;
-
-         if( !ref $part ) {
-            return $more_func->( $part );
-         }
-         elsif( blessed $part and $part->isa( "Future" ) ) {
-            return $part->then( sub {
-               my ( $more ) = @_;
-               return Future->new->done( $more_func->( $more ) );
-            });
-         }
-         elsif( ref $part eq "CODE" ) {
-            my $buffer = "";
-            return sub {
-               my ( $pos, $len ) = @_;
-               my $end = $pos + $len;
-               if( length $buffer < $end ) {
-                  my $more = $part->( length $buffer, $end - length $buffer );
-                  $buffer .= $more_func->( $more );
-               }
-               $on_progress->( $part_start + $end );
-               return substr( $buffer, $pos, $len );
-            }, $part_len
-         }
-         else {
-            die "TOOD: Not sure what to do with part";
-         }
-      },
-   )->then( sub {
-      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
-   });
-
-   return $f unless @more_futures;
-   return Future->needs_all( $f, @more_futures );
-}
-
 sub _put_file_from_fh
 {
    my $self = shift;
    my ( $fh, $s3path, %args ) = @_;
+
+   my $on_progress = $args{on_progress};
+
+   my %meta = (
+      Mtime => strftime_iso8601( delete $args{mtime} ),
+   );
 
    stat( $fh ) or die "Cannot stat FH - $!";
 
@@ -589,12 +516,77 @@ sub _put_file_from_fh
       die "Cannot put from $fh - must be a regular file, pipe, or socket\n";
    }
 
-   $self->_put_file_from_parts( $s3path, $gen_parts,
-      meta => {
-         Mtime => strftime_iso8601( delete $args{mtime} ),
+   my @more_futures;
+
+   my $md5 = Digest::MD5->new;
+   my $more_func = sub {
+      my ( $more ) = @_;
+      $md5->add( $more );
+      return $more;
+   };
+
+   if( my $cryptoscheme = $self->{crypto} ) {
+      my $crypt = SocialFlow::S3::Crypt->new(
+         scheme     => $cryptoscheme,
+         passphrase => $self->{crypto_passphrase},
+         random_iv  => 1,
+      );
+
+      push @more_futures, $self->put_meta( $s3path, "cryptokey",
+         join( ":", $cryptoscheme, unpack "H*", $crypt->iv ) . "\n",
+      );
+
+      my $cleartext_more_func = $more_func;
+      $more_func = sub {
+         my $cleartext = $cleartext_more_func->( @_ );
+         return $crypt->encrypt( $cleartext );
+      };
+   }
+   else {
+      push @more_futures, $self->delete_meta( $s3path, "cryptokey" );
+   }
+
+   my $part_offset = 0;
+   my $f = $self->{s3}->put_object(
+      key       => "data/$s3path",
+      meta      => \%meta,
+      gen_parts => sub {
+         my ( $part, $part_len ) = $gen_parts->() or return;
+         my $part_start = $part_offset;
+         $part_offset += $part_len;
+
+         if( !ref $part ) {
+            return $more_func->( $part );
+         }
+         elsif( blessed $part and $part->isa( "Future" ) ) {
+            return $part->then( sub {
+               my ( $more ) = @_;
+               return Future->new->done( $more_func->( $more ) );
+            });
+         }
+         elsif( ref $part eq "CODE" ) {
+            my $buffer = "";
+            return sub {
+               my ( $pos, $len ) = @_;
+               my $end = $pos + $len;
+               if( length $buffer < $end ) {
+                  my $more = $part->( length $buffer, $end - length $buffer );
+                  $buffer .= $more_func->( $more );
+               }
+               $on_progress->( $part_start + $end );
+               return substr( $buffer, $pos, $len );
+            }, $part_len
+         }
+         else {
+            die "TOOD: Not sure what to do with part";
+         }
       },
-      %args,
-   );
+   )->then( sub {
+      $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
+   });
+
+   return $f unless @more_futures;
+   return Future->needs_all( $f, @more_futures );
 }
 
 sub put_file
