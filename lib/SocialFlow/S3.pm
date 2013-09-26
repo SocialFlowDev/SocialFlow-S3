@@ -536,6 +536,67 @@ sub _put_file_from_parts
    return Future->needs_all( $f, @more_futures );
 }
 
+sub _put_file_from_fh
+{
+   my $self = shift;
+   my ( $fh, $s3path, %args ) = @_;
+
+   stat( $fh ) or die "Cannot stat FH - $!";
+
+   my $gen_parts;
+   if( -f _ ) {
+      my $len_total = -s _;
+      my $read_pos = 0;
+
+      $gen_parts = sub {
+         return if $read_pos >= $len_total;
+
+         my $part_start = $read_pos;
+         my $part_length = $len_total - $part_start;
+         $part_length = PART_SIZE if $part_length > PART_SIZE;
+
+         $read_pos += $part_length;
+
+         my $gen_value = sub {
+            my ( $pos, $len ) = @_;
+            my $ret = sysread( $fh, my $buffer, $len );
+            defined $ret or die "Cannot read - $!";
+
+            return $buffer;
+         };
+
+         return $gen_value, $part_length;
+      };
+   }
+   elsif( -p _ or -S _ ) {
+      # pipe or socket
+      $self->add_child( my $stream = IO::Async::Stream->new(
+         read_handle => $fh,
+         on_read => sub { 0 },
+      ) );
+
+      my $eof;
+      $gen_parts = sub {
+         return if $eof;
+         my $f = $stream->read_exactly( PART_SIZE )
+            ->on_done( sub {
+               ( my $part, $eof ) = @_;
+            });
+         return ( $f, PART_SIZE );
+      };
+   }
+   else {
+      die "Cannot put from $fh - must be a regular file, pipe, or socket\n";
+   }
+
+   $self->_put_file_from_parts( $s3path, $gen_parts,
+      meta => {
+         Mtime => strftime_iso8601( delete $args{mtime} ),
+      },
+      %args,
+   );
+}
+
 sub put_file
 {
    my $self = shift;
@@ -546,32 +607,8 @@ sub put_file
    my ( $len_total, $mtime ) = ( stat $fh )[7,9];
    $args{on_progress}->( 0, $len_total );
 
-   my $read_pos = 0;
-
-   my $gen_parts = sub {
-      return if $read_pos >= $len_total;
-
-      my $part_start = $read_pos;
-      my $part_length = $len_total - $part_start;
-      $part_length = PART_SIZE if $part_length > PART_SIZE;
-
-      $read_pos += $part_length;
-
-      my $gen_value = sub {
-         my ( $pos, $len ) = @_;
-         my $ret = sysread( $fh, my $buffer, $len );
-         defined $ret or die "Cannot read - $!";
-
-         return $buffer;
-      };
-
-      return $gen_value, $part_length;
-   };
-
-   $self->_put_file_from_parts( $s3path, $gen_parts,
-      meta => {
-         Mtime => strftime_iso8601( $mtime ),
-      },
+   $self->_put_file_from_fh( $fh, $s3path,
+      mtime => $mtime,
       %args,
    );
 }
@@ -818,22 +855,12 @@ sub cmd_uncat
          die "Not overwriting S3 file $s3path (use the --force)\n";
    }
 
-   $self->add_child( my $stdin = IO::Async::Stream->new_for_stdin( on_read => sub { 0 } ) );
-
-   my $eof;
-   my $gen_parts = sub {
-      return if $eof;
-      my $f = $stdin->read_exactly( PART_SIZE )
-         ->on_done( sub {
-            ( my $part, $eof ) = @_;
-         });
-      return ( $f, PART_SIZE );
-   };
-
-   $self->_put_file_from_parts( $s3path, $gen_parts, 
-      meta => {
-         Mtime => strftime_iso8601( time() ),
+   $self->_put_file_from_fh( \*STDIN, $s3path,
+      mtime => time,
+      on_progress => sub {
+         # TODO
       },
+      %args,
    )->get;
 }
 
