@@ -11,7 +11,7 @@ use SocialFlow::S3::Crypt;
 use Future;
 use Future::Utils qw( fmap1 fmap_void );
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.08; # ssl
+use Net::Async::Webservice::S3 0.13; # no-parts bugfix
 
 use Digest::MD5;
 use File::Basename qw( dirname );
@@ -204,7 +204,7 @@ sub _start_progress_one
          my $rate = $$len_so_far_ref / ( $now - $start_time );
 
          my $status;
-         if( defined $len_total ) {
+         if( defined $len_total and $len_total > 0 ) {
             $status = sprintf "Done %.2f%% (%d of %d) ",
                100 * $$len_so_far_ref / $len_total, $$len_so_far_ref, $len_total;
          }
@@ -567,15 +567,6 @@ sub put_file
 
       return $gen_value, $part_length;
    };
-
-# special-case for zero-byte long files as otherwise we'll generate no
-# parts at all
-   $gen_parts = sub {
-      return if $read_pos > 0;
-
-      $read_pos = 1;
-      return "", 0;
-   } if $len_total == 0;
 
    $self->_put_file_from_parts( $s3path, $gen_parts,
       meta => {
