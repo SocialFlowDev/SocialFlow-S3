@@ -6,10 +6,9 @@ use feature qw( switch );
 use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
-use SocialFlow::S3::Crypt;
-
 use Future;
 use Future::Utils qw( fmap1 fmap_void );
+use IO::Async::Process;
 use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.13; # no-parts bugfix
 
@@ -78,11 +77,8 @@ sub configure
       );
    }
 
-   my $crypto = delete $args{crypto} || $self->{crypto};
-   my $crypto_passphrase = delete $args{crypto_passphrase} || $self->{crypto_passphrase};
-   if( $crypto and $crypto_passphrase ) {
-      $self->{crypto}            = $crypto;
-      $self->{crypto_passphrase} = $crypto_passphrase;
+   if( my $keyid = delete $args{crypto_keyid} ) {
+      $self->{crypto_keyid} = $keyid;
    }
 
    $self->SUPER::configure( %args );
@@ -468,10 +464,79 @@ sub _put_file_from_fh
       Mtime => strftime_iso8601( delete $args{mtime} ),
    );
 
+   my $md5 = Digest::MD5->new;
+   my $more_func;
+   my $fh_stream;
+
+   if( my $keyid = $self->{crypto_keyid} ) {
+      $meta{Keyid} = $keyid;
+
+      # pipe the data through 'gpg --encrypt --recipient $keyid' -
+      my $gpg_process = IO::Async::Process->new(
+         command => [ "gpg", "--encrypt", "--recipient", $keyid, "--no-tty", "-" ],
+         stdin  => { via => "pipe_write" },
+         stdout => { via => "pipe_read" },
+         on_finish => sub {
+            my ( undef, $exitcode ) = @_;
+            $exitcode == 0 and return;
+
+            die "gpg exited non-zero $exitcode\n";
+         },
+      );
+      $gpg_process->stdout->configure( on_read => sub { 0 } );
+      $self->add_child( $gpg_process );
+
+      # But we need to be reading it ourselves anyway, as the main meta/PATH/md5sum
+      # checksum has to store the plaintext sum
+      my $fh_in = IO::Async::Stream->new(
+         read_handle => $fh,
+         on_read => sub {}, # reading only by Futures
+         close_on_read_eof => 0, # we'll close it ourselves - TODO: IO::Async might want to defer this one
+         read_high_watermark => 10 * 1024*1024, # 10 MiB
+         read_low_watermark  =>  5 * 1024*1024, #  5 MiB
+      );
+      $self->add_child( $fh_in );
+      undef $fh;
+
+      my $eof;
+      $gpg_process->stdin->write( sub {
+         return undef if $eof;
+         return $fh_in->read_atmost( 64 * 1024 ) # 64 KiB
+            ->and_then( sub {
+               my $f = shift;
+               ( my $content, $eof ) = $f->get;
+
+               $md5->add( $content );
+
+               $f;
+            })
+      })->on_done( sub {
+         $gpg_process->stdin->close;
+      });
+
+      $fh_stream = $gpg_process->stdout;
+      $fh = $fh_stream->read_handle;
+      $more_func = sub { $_[0] };
+   }
+   else {
+      $fh_stream = IO::Async::Stream->new(
+         read_handle => $fh,
+         on_read => sub { 0 },
+      );
+      $self->add_child( $fh_stream );
+
+      $more_func = sub {
+         $md5->add( $_[0] );
+         $_[0];
+      };
+   }
+
    stat( $fh ) or die "Cannot stat FH - $!";
 
    my $gen_parts;
    if( -f _ ) {
+      # Ignore the fh_stream here
+
       my $len_total = -s _;
       my $read_pos = 0;
 
@@ -497,15 +562,11 @@ sub _put_file_from_fh
    }
    elsif( -p _ or -S _ ) {
       # pipe or socket
-      $self->add_child( my $stream = IO::Async::Stream->new(
-         read_handle => $fh,
-         on_read => sub { 0 },
-      ) );
-
+      # this case is used for all GPG-driven input
       my $eof;
       $gen_parts = sub {
          return if $eof;
-         my $f = $stream->read_exactly( PART_SIZE )
+         my $f = $fh_stream->read_exactly( PART_SIZE )
             ->on_done( sub {
                ( my $part, $eof ) = @_;
             });
@@ -517,34 +578,6 @@ sub _put_file_from_fh
    }
 
    my @more_futures;
-
-   my $md5 = Digest::MD5->new;
-   my $more_func = sub {
-      my ( $more ) = @_;
-      $md5->add( $more );
-      return $more;
-   };
-
-   if( my $cryptoscheme = $self->{crypto} ) {
-      my $crypt = SocialFlow::S3::Crypt->new(
-         scheme     => $cryptoscheme,
-         passphrase => $self->{crypto_passphrase},
-         random_iv  => 1,
-      );
-
-      push @more_futures, $self->put_meta( $s3path, "cryptokey",
-         join( ":", $cryptoscheme, unpack "H*", $crypt->iv ) . "\n",
-      );
-
-      my $cleartext_more_func = $more_func;
-      $more_func = sub {
-         my $cleartext = $cleartext_more_func->( @_ );
-         return $crypt->encrypt( $cleartext );
-      };
-   }
-   else {
-      push @more_futures, $self->delete_meta( $s3path, "cryptokey" );
-   }
 
    my $part_offset = 0;
    my $f = $self->{s3}->put_object(
@@ -611,53 +644,67 @@ sub _get_file_to_code
    my ( $s3path, $on_data, %args ) = @_;
 
    my $md5 = Digest::MD5->new;
-   {
-      my $orig_on_data = $on_data;
-      $on_data = sub {
-         my ( $header, $data ) = @_;
-         $md5->add( $data ) if defined $data;
-         $orig_on_data->( $header, $data );
-      }
-   }
 
-   ( $self->get_meta( $s3path, "cryptokey" )->then( sub {
-      chomp $_[0];
-      my ( $cryptoscheme, $iv_hex ) = split m/:/, $_[0];
-      my $iv = pack "H*", $iv_hex;
+   my $initial = 1;
 
-      defined $self->{crypto_passphrase} or
-         die "Cannot fetch $s3path - it is encrypted and no crypto_passphrase is defined";
+   my $gpg_stdin;
+   my $gpg_future; # undef unless we're waiting for GPG as well
 
-      my $crypt = SocialFlow::S3::Crypt->new(
-         scheme     => $cryptoscheme,
-         passphrase => $self->{crypto_passphrase},
-         iv         => $iv,
-      );
+   Future->needs_all(
+      $self->get_meta( $s3path, "md5sum" )
+         ->transform( done => sub { chomp $_[0]; $_[0] } ),
+      $self->{s3}->get_object(
+         key    => "data/$s3path",
+         on_chunk => sub {
+            my ( $header, $data ) = @_;
 
-      my $plaintext_on_data = $on_data;
-      $on_data = sub {
-         my ( $header, $data ) = @_;
-         my $plaintext = $crypt->decrypt( $data );
-         $plaintext_on_data->( $header, $plaintext );
-      };
+            if( $initial ) {
+               $initial--;
 
-      Future->new->done;
-   })->or_else( sub {
-      my ( $error, $request, $response ) = $_[0]->failure;
-      return Future->new->done if $response->code == 404;
-      return $_[0];
-   }) )->then( sub {
-      Future->needs_all(
-         $self->get_meta( $s3path, "md5sum" )
-            ->transform( done => sub { chomp $_[0]; $_[0] } ),
-         $self->{s3}->get_object(
-            key    => "data/$s3path",
-            on_chunk => sub {
-               my ( $header, $data ) = @_;
-               $on_data->( $header, $data );
-            },
-         )
+               if( defined $header->header( "X-Amz-Meta-Keyid" ) ) {
+                  my $orig_on_data = $on_data;
+
+                  $gpg_future = $self->loop->new_future;
+                  my $gpg_process = IO::Async::Process->new(
+                     command => [ "gpg", "--decrypt", "-" ],
+                     stdin  => { via => "pipe_write" },
+                     stdout => {
+                        on_read => sub {
+                           my ( undef, $buffref ) = @_;
+                           $md5->add( $$buffref );
+                           $orig_on_data->( $header, $$buffref );
+                           $$buffref = "";
+                        },
+                     },
+                     on_finish => sub {
+                        my ( undef, $exitcode ) = @_;
+                        $gpg_future->done;
+                        $exitcode == 0 and return;
+
+                        die "gpg exited non-zero $exitcode\n";
+                     },
+                  );
+                  $self->add_child( $gpg_process );
+
+                  $gpg_stdin = $gpg_process->stdin;
+
+                  $on_data = sub {
+                     $gpg_stdin->write( $_[1] );
+                  };
+               }
+            }
+
+            $md5->add( $data ) if defined $data and !$gpg_stdin;
+            $on_data->( $header, $data );
+         },
       )
+   )->and_then( sub {
+      my $f = shift;
+      return $f unless defined $gpg_future;
+
+      # Close pipe to gpg and wait for it to finish
+      $gpg_stdin->close_when_empty;
+      $gpg_future->then( sub { $f } );
    })->then( sub {
       my ( $exp_md5sum, undef, $header, $meta ) = @_;
       $on_data->( $header, undef ); # Indicate EOF
@@ -759,22 +806,16 @@ sub cmd_ls
    if( $LONG ) {
       @files = ( fmap1 {
          my $key = $_[0]->{key};
-         ( my $metapath = $key ) =~ s{^data/}{meta/};
-         Future->needs_all(
-            $self->{s3}->head_object(
-               key => $key
-            ),
-            $self->{s3}->get_object(
-               key => "$metapath/cryptokey"
-            )->else( sub { Future->new->done( undef ) } ),
+         $self->{s3}->head_object(
+            key => $key
          )->then( sub {
-            my ( $header, $meta, $cryptokey ) = @_;
+            my ( $header, $meta ) = @_;
 
             return Future->new->done( {
                name => substr( $key, 5 ),
                size => $header->content_length,
                mtime => ( defined $meta->{Mtime} ? strptime_iso8601( $meta->{Mtime} ) : undef ),
-               enc   => defined $cryptokey,
+               enc   => defined $meta->{Keyid},
             } );
          });
       } foreach => $keys, return => $self->loop->new_future, concurrent => 20 )->get;
