@@ -605,18 +605,18 @@ sub put_file
    );
 }
 
-sub _get_file_chunks
+sub _get_file_to_code
 {
    my $self = shift;
-   my ( $s3path, $on_chunk, %args ) = @_;
+   my ( $s3path, $on_data, %args ) = @_;
 
    my $md5 = Digest::MD5->new;
    {
-      my $orig_on_chunk = $on_chunk;
-      $on_chunk = sub {
-         my ( $header, $chunk ) = @_;
-         $md5->add( $chunk ) if defined $chunk;
-         $orig_on_chunk->( $header, $chunk );
+      my $orig_on_data = $on_data;
+      $on_data = sub {
+         my ( $header, $data ) = @_;
+         $md5->add( $data ) if defined $data;
+         $orig_on_data->( $header, $data );
       }
    }
 
@@ -634,11 +634,11 @@ sub _get_file_chunks
          iv         => $iv,
       );
 
-      my $plaintext_on_chunk = $on_chunk;
-      $on_chunk = sub {
-         my ( $header, $chunk ) = @_;
-         my $plaintext = $crypt->decrypt( $chunk );
-         $plaintext_on_chunk->( $header, $plaintext );
+      my $plaintext_on_data = $on_data;
+      $on_data = sub {
+         my ( $header, $data ) = @_;
+         my $plaintext = $crypt->decrypt( $data );
+         $plaintext_on_data->( $header, $plaintext );
       };
 
       Future->new->done;
@@ -653,14 +653,14 @@ sub _get_file_chunks
          $self->{s3}->get_object(
             key    => "data/$s3path",
             on_chunk => sub {
-               my ( $header, $chunk ) = @_;
-               $on_chunk->( $header, $chunk );
+               my ( $header, $data ) = @_;
+               $on_data->( $header, $data );
             },
          )
       )
    })->then( sub {
       my ( $exp_md5sum, undef, $header, $meta ) = @_;
-      $on_chunk->( $header, undef ); # Indicate EOF
+      $on_data->( $header, undef ); # Indicate EOF
 
       my $got_md5sum = $md5->hexdigest;
       if( $exp_md5sum ne $got_md5sum ) {
@@ -686,11 +686,11 @@ sub get_file
    my $len_total;
    my $len_so_far;
 
-   $self->_get_file_chunks(
+   $self->_get_file_to_code(
       $s3path,
       sub {
-         my ( $header, $chunk ) = @_;
-         return unless defined $chunk;
+         my ( $header, $data ) = @_;
+         return unless defined $data;
 
          if( !defined $len_total ) {
             $len_so_far = 0;
@@ -699,8 +699,8 @@ sub get_file
             $on_progress->( $len_so_far, $len_total );
          }
 
-         $fh->print( $chunk );
-         $len_so_far += length $chunk;
+         $fh->print( $data );
+         $len_so_far += length $data;
          $on_progress->( $len_so_far, $len_total );
       },
    )->then( sub {
@@ -819,18 +819,18 @@ sub cmd_cat
    my $len_so_far = 0;
    my $progress_timer;
 
-   $self->_get_file_chunks(
+   $self->_get_file_to_code(
       $s3path,
       sub {
-         my ( $header, $chunk ) = @_;
-         return unless defined $chunk;
+         my ( $header, $data ) = @_;
+         return unless defined $data;
 
          if( $do_progress ) {
             $progress_timer ||= $self->_start_progress_one( $header->content_length, \$len_so_far );
-            $len_so_far += length $chunk;
+            $len_so_far += length $data;
          }
 
-         print $chunk;
+         print $data;
       },
    )->get;
 
