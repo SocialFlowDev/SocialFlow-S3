@@ -794,6 +794,7 @@ sub cmd_ls
    my ( $s3pattern, %options ) = @_;
    my $LONG = $options{long};
    my $RECURSE = $options{recurse};
+   my $STDOUT = $options{stdout} || \*STDOUT;
 
    my ( $prefix, $re ) = $self->_split_pattern( $s3pattern // "", 1 );
 
@@ -834,17 +835,17 @@ sub cmd_ls
             # Timestamps in local timezone
             my @mtime = localtime $e->{mtime};
             my $timestamp = defined $e->{mtime} ? strftime( "%Y-%m-%d %H:%M:%S", @mtime ) : "-- unknown --";
-            printf "%-38s %15d %s %s\n", $name, $e->{size}, $timestamp, $e->{enc} ? "ENC" : "   ";
+            printf $STDOUT "%-38s %15d %s %s\n", $name, $e->{size}, $timestamp, $e->{enc} ? "ENC" : "   ";
          }
          else {
-            printf "%-38s\n", $name;
+            printf $STDOUT "%-38s\n", $name;
          }
       }
       elsif( !@files or @$prefixes and $prefixes->[0] lt $files[0]{name} ) {
          my $name = substr shift @$prefixes, 5;
          next if $re and substr( $name, 0, -1 ) !~ $re;
 
-         printf "%-38s DIR\n", $name;
+         printf $STDOUT "%-38s DIR\n", $name;
       }
    }
 }
