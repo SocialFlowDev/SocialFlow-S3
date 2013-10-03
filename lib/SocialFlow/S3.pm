@@ -818,7 +818,7 @@ sub cmd_ls
                enc   => defined $meta->{Keyid},
             } );
          });
-      } foreach => $keys, return => $self->loop->new_future, concurrent => 20 )->get;
+      } foreach => $keys, concurrent => 20 )->get;
    }
    else {
       @files = map { +{ name => substr $_->{key}, 5 } } @$keys;
@@ -1065,7 +1065,6 @@ sub cmd_push
          });
       });
    } foreach => \@files,
-     return => $self->loop->new_future,
      concurrent => $concurrent )->get;
 
    $self->print_message( sprintf "All files done\n" . 
@@ -1153,7 +1152,6 @@ sub cmd_pull
          });
       });
    } foreach => \@files,
-     return => $self->loop->new_future,
      concurrent => $concurrent )->get;
 
    $self->print_message( sprintf "All files done\n" . 
