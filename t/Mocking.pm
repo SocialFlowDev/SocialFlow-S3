@@ -28,6 +28,8 @@ sub mock_methods_into
       my $EXPECT_method = "EXPECT_$method";
 
       no strict 'refs';
+      no warnings 'redefine';
+
       *{"${pkg}::$EXPECT_method"} = sub {
          shift;
          my %args = @_;
