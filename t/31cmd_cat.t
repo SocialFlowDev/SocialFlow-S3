@@ -6,6 +6,7 @@ use warnings;
 use Test::More;
 
 use SocialFlow::S3;
+use t::Mocking;
 use t::MockS3;
 use HTTP::Response;
 
@@ -42,8 +43,8 @@ $s3->EXPECT_get_object(
    $sfs3->cmd_cat( "key-1", stdout => $outh );
 
    is( $output, "The value of key-1", 'output from cmd_cat' );
-}
 
-ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
+}
 
 done_testing;

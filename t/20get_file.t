@@ -6,6 +6,7 @@ use warnings;
 use Test::More;
 
 use SocialFlow::S3;
+use t::Mocking;
 use t::MockS3;
 use HTTP::Response;
 
@@ -40,7 +41,7 @@ $s3->EXPECT_get_object(
    my $content = "";
    my $f = $sfs3->_get_file_to_code( "key-1", sub { $content .= $_[1] if defined $_[1] } );
 
-   ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
 
    $f->get;
 

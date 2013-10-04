@@ -4,6 +4,11 @@ use strict;
 use warnings;
 use base qw( IO::Async::Notifier );
 
+use t::Mocking;
+t::Mocking->mock_methods(qw(
+   list_bucket head_object get_object put_object delete_object
+));
+
 sub _init
 {
    my $self = shift;
@@ -19,64 +24,7 @@ sub configure
    $self->SUPER::configure( %args );
 }
 
-my @expectations; # [] = [$method, \%args, return]
-
-foreach my $method (qw( list_bucket head_object get_object put_object delete_object )) {
-   my $EXPECT_method = "EXPECT_$method";
-
-   no strict 'refs';
-   *$EXPECT_method = sub {
-      shift;
-      my %args = @_;
-      push @expectations, my $e =
-         bless [ $method => \%args, undef ], "t::MockS3::Expectation";
-      return $e;
-   };
-
-   *$method = sub {
-      my $self = shift;
-      my %args = @_;
-
-      EXPECT: foreach my $e ( @expectations ) {
-         $e->[0] eq $method or next EXPECT;
-         my $args = $e->[1];
-         $args->{$_} eq $args{$_} or next EXPECT for keys %$args;
-
-         @expectations = grep { $_ != $e } @expectations;
-
-         delete @args{keys %$args};
-
-         return $e->[2]->( %args );
-      }
-
-      die "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
-   };
-}
-
-sub NO_MORE_EXPECTATIONS { !@expectations }
-
 package t::MockS3::Http;
 sub configure {}
-
-package t::MockS3::Expectation;
-
-sub RETURN_WITH
-{
-   my $e = shift;
-   ( $e->[2] ) = @_;
-}
-
-sub RETURN
-{
-   my $e = shift;
-   my @ret = @_;
-   $e->[2] = sub { return wantarray ? @ret : $ret[0]; };
-}
-
-sub RETURN_F
-{
-   my $e = shift;
-   $e->RETURN( Future->new->done( @_ ) );
-}
 
 1;

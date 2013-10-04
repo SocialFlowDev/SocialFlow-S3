@@ -6,6 +6,7 @@ use warnings;
 use Test::More;
 
 use SocialFlow::S3;
+use t::Mocking;
 use t::MockS3;
 use HTTP::Response;
 
@@ -35,8 +36,8 @@ $s3->EXPECT_delete_object(
 
 {
    $sfs3->cmd_rm( "key-3" );
-}
 
-ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
+}
 
 done_testing;

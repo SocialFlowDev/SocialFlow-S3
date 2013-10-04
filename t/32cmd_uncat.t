@@ -6,6 +6,7 @@ use warnings;
 use Test::More;
 
 use SocialFlow::S3;
+use t::Mocking;
 use t::MockS3;
 use HTTP::Response;
 
@@ -62,8 +63,8 @@ $s3->EXPECT_put_object(
    is( $put_content, "A new value for key-1", 'PUT content' );
 
    is( $put_md5sum, "157e3a08ddc87ae336292e4a363b715d\n", 'PUT meta md5' );
-}
 
-ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
+}
 
 done_testing;

@@ -6,6 +6,7 @@ use warnings;
 use Test::More;
 
 use SocialFlow::S3;
+use t::Mocking;
 use t::MockS3;
 use HTTP::Response;
 
@@ -56,7 +57,7 @@ $s3->EXPECT_put_object(
    # 2013-10-04 14:26:04 UTC
    my $f = $sfs3->_put_file_from_fh( $rd, "key-1", mtime => 1380896764 );
 
-   ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
 
    $f->get;
 

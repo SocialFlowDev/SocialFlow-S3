@@ -6,6 +6,7 @@ use warnings;
 use Test::More;
 
 use SocialFlow::S3;
+use t::Mocking;
 use t::MockS3;
 use HTTP::Response;
 
@@ -41,7 +42,7 @@ key-3
 EOF
    'output from cmd_ls short no-recurse' );
 
-   ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
 }
 
 $s3->EXPECT_list_bucket(
@@ -89,7 +90,7 @@ key-3                                              147 2013-10-04 00:24:14
 EOF
    'output from cmd_ls long no-recurse' );
 
-   ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
 }
 
 $s3->EXPECT_list_bucket(
@@ -121,7 +122,7 @@ prefix-2/subkey-B
 EOF
    'output from cmd_ls short recurse' );
 
-   ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
 }
 
 $s3->EXPECT_list_bucket(
@@ -145,7 +146,7 @@ prefix-1/subkey-A
 EOF
    'output from cmd_ls in subdir' );
 
-   ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+   no_more_expectations_ok;
 }
 
 done_testing;
