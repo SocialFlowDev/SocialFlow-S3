@@ -9,6 +9,7 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 use Future;
 use Future::Utils qw( fmap1 fmap_void );
 use IO::Async::Process;
+use IO::Async::Stream;
 use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.13; # no-parts bugfix
 
