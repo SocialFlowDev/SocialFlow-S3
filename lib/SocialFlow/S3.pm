@@ -613,7 +613,7 @@ sub _put_file_from_fh
                   my $more = $part->( length $buffer, $end - length $buffer );
                   $buffer .= $more_func->( $more );
                }
-               $on_progress->( $part_start + $end );
+               $on_progress->( $part_start + $end ) if $on_progress;
                return substr( $buffer, $pos, $len );
             }, $part_len
          }
@@ -637,7 +637,7 @@ sub put_file
    open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
 
    my ( $len_total, $mtime ) = ( stat $fh )[7,9];
-   $args{on_progress}->( 0, $len_total );
+   $args{on_progress}->( 0, $len_total ) if $args{on_progress};
 
    $self->_put_file_from_fh( $fh, $s3path,
       mtime => $mtime,
@@ -750,12 +750,12 @@ sub get_file
             $len_so_far = 0;
             $len_total = $header->content_length;
 
-            $on_progress->( $len_so_far, $len_total );
+            $on_progress->( $len_so_far, $len_total ) if $on_progress;
          }
 
          $fh->print( $data );
          $len_so_far += length $data;
-         $on_progress->( $len_so_far, $len_total );
+         $on_progress->( $len_so_far, $len_total ) if $on_progress;
       },
    )->then( sub {
       my ( $header, $meta ) = @_;
