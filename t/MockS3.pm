@@ -21,7 +21,7 @@ sub configure
 
 my @expectations; # [] = [$method, \%args, return]
 
-foreach my $method (qw( list_bucket head_object get_object put_object )) {
+foreach my $method (qw( list_bucket head_object get_object put_object delete_object )) {
    my $EXPECT_method = "EXPECT_$method";
 
    no strict 'refs';
