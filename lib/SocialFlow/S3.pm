@@ -347,6 +347,7 @@ sub fopen_write
    }
 
    open my $fh, ">", $path or die "Cannot write $path - $!";
+   return $fh;
 }
 
 sub fstat_size_mtime
