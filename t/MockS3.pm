@@ -21,7 +21,7 @@ sub configure
 
 my @expectations; # [] = [$method, \%args, return]
 
-foreach my $method (qw( list_bucket head_object )) {
+foreach my $method (qw( list_bucket head_object get_object put_object )) {
    my $EXPECT_method = "EXPECT_$method";
 
    no strict 'refs';
@@ -42,7 +42,9 @@ foreach my $method (qw( list_bucket head_object )) {
          my $args = $e->[1];
          $args->{$_} eq $args{$_} or next EXPECT for keys %$args;
 
-         return $e->[2]->();
+         delete @args{keys %$args};
+
+         return $e->[2]->( %args );
       }
 
       die "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
@@ -53,6 +55,13 @@ package t::MockS3::Http;
 sub configure {}
 
 package t::MockS3::Expectation;
+
+sub RETURN_WITH
+{
+   my $e = shift;
+   ( $e->[2] ) = @_;
+}
+
 sub RETURN
 {
    my $e = shift;
