@@ -15,8 +15,10 @@ use YAML qw( LoadFile );
 
 Getopt::Long::Configure(qw(bundling pass_through ));
 
-GetOptions( 'C|config=s' => \(my $CONFIG_FILE = "etc/sfs3.conf") ) or
-   do_help(), exit 1;
+GetOptions(
+   'C|config=s' => \(my $CONFIG_FILE = "etc/sfs3.conf"),
+   'q|quiet'    => \my $QUIET,
+) or do_help(), exit 1;
 
 Getopt::Long::Configure(qw( no_pass_through ));
 
@@ -39,16 +41,18 @@ sub config {
 }
 
 # Don't load the config file until we actually need it
-sub s3 {
-  my $config = config( $_[0] );
+sub s3
+{
+   my $config = config( $_[0] );
 
-  my $loop = IO::Async::Loop->new;
-  my $s3 = SocialFlow::S3->new(
-     ( map { $_ => $config->{$_} }
-          qw( access_key secret_key bucket ssl crypto_keyid ) ),
-  );
-  $loop->add( $s3 );
-  $s3
+   my $loop = IO::Async::Loop->new;
+   my $s3 = SocialFlow::S3->new(
+      quiet => $QUIET,
+      ( map { $_ => $config->{$_} }
+         qw( access_key secret_key bucket ssl crypto_keyid ) ),
+   );
+   $loop->add( $s3 );
+   $s3
 }
 
 sub do_help

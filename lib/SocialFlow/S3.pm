@@ -62,6 +62,10 @@ sub configure
       $self->add_child( $self->{s3} = $s3 );
    }
 
+   foreach (qw( quiet )) {
+      $self->{$_} = delete $args{$_} if exists $args{$_};
+   }
+
    foreach (qw( timeout stall_timeout )) {
       next unless exists $args{$_};
 
@@ -89,6 +93,8 @@ sub print_message
 {
    my $self = shift;
    my ( $msg ) = @_;
+
+   return if $self->{quiet};
 
    # Clear an old status message
    print STDERR "\e\x4D\e[K" for 1 .. $self->{status_lines};
@@ -964,7 +970,7 @@ sub cmd_rm
    # TODO: Future concurrently
    foreach my $s3path ( @s3paths ) {
       $self->delete_file( $s3path )->get;
-      print "Removed $s3path\n";
+      print "Removed $s3path\n" unless $self->{quiet};
    }
 }
 
