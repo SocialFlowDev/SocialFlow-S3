@@ -321,6 +321,54 @@ sub _start_progress_bulk
    }
 }
 
+# Filesystem abstraction methods, so we can override them for unit testing to
+# virtualise the filesystem
+
+sub fopen_read
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $path = $args{path};
+
+   open my $fh, "<", $path or die "Cannot read $path - $!";
+   return $fh;
+}
+
+sub fopen_write
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $path = $args{path};
+
+   if( $args{mkdir} and ! -d dirname( $path ) ) {
+      make_path( dirname $path );
+   }
+
+   open my $fh, ">", $path or die "Cannot write $path - $!";
+}
+
+sub fstat_size_mtime
+{
+   my $self = shift;
+   my %args = @_;
+
+   return +( stat $args{fh} )[7,9];
+}
+
+sub futime
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $path = $args{path};
+
+   utime( $args{atime}, $args{mtime}, $path ) or die "Cannot utime $path - $!";
+}
+
+# S3 abstractions
+
 sub put_meta
 {
    my $self = shift;
@@ -634,9 +682,9 @@ sub put_file
    my $self = shift;
    my ( $localpath, $s3path, %args ) = @_;
 
-   open my $fh, "<", $localpath or die "Cannot read $localpath - $!";
+   my $fh = $self->fopen_read( path => $localpath );
 
-   my ( $len_total, $mtime ) = ( stat $fh )[7,9];
+   my ( $len_total, $mtime ) = $self->fstat_size_mtime( fh => $fh );
    $args{on_progress}->( 0, $len_total ) if $args{on_progress};
 
    $self->_put_file_from_fh( $fh, $s3path,
@@ -731,11 +779,7 @@ sub get_file
    my ( $s3path, $localpath, %args ) = @_;
    my $on_progress = $args{on_progress};
 
-   if( $args{mkdir} and ! -d dirname( $localpath ) ) {
-      make_path( dirname $localpath );
-   }
-
-   open my $fh, ">", $localpath or die "Cannot write $localpath - $!";
+   my $fh = $self->fopen_write( path => $localpath, mkdir => $args{mkdir} );
 
    my $len_total;
    my $len_so_far;
@@ -764,7 +808,7 @@ sub get_file
 
       if( defined $meta->{Mtime} ) {
          my $mtime = strptime_iso8601( $meta->{Mtime} );
-         utime( $mtime, $mtime, $localpath ) or die "Cannot set mtime - $!";
+         $self->futime( path => $localpath, mtime => $mtime, atime => $mtime );
       }
 
       Future->new->done;
