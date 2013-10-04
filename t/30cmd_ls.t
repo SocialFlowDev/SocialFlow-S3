@@ -15,19 +15,20 @@ my $sfs3 = SocialFlow::S3->new(
    bucket => "bucket-name/with-prefix",
 );
 
-$s3->EXPECT_list_bucket(
-   delimiter => "/",
-   prefix => "data/",
-)->RETURN_F(
-   [
-      { key => "data/key-1" },
-      { key => "data/key-2" },
-      { key => "data/key-3" },
-   ],
-   [qw( data/prefix-1 data/prefix-2 )]
-);
-
+# ls
 {
+   $s3->EXPECT_list_bucket(
+      delimiter => "/",
+      prefix => "data/",
+   )->RETURN_F(
+      [
+         { key => "data/key-1" },
+         { key => "data/key-2" },
+         { key => "data/key-3" },
+      ],
+      [qw( data/prefix-1 data/prefix-2 )]
+   );
+
    open my $outh, ">", \(my $output = "");
 
    $sfs3->cmd_ls( "", stdout => $outh );
@@ -45,37 +46,38 @@ EOF
    no_more_expectations_ok;
 }
 
-$s3->EXPECT_list_bucket(
-   delimiter => "/",
-   prefix => "data/",
-)->RETURN_F(
-   [
-      { key => "data/key-1" },
-      { key => "data/key-2" },
-      { key => "data/key-3" },
-   ],
-   [qw( data/prefix-1 data/prefix-2 )]
-);
-
-$s3->EXPECT_head_object( key => "data/key-1" )
-   ->RETURN_F( HTTP::Response->new( 200, "OK",
-      [
-         "Content-Length" => 123,
-      ] ), { Mtime => "2013-10-03T23:24:10Z" } );
-
-$s3->EXPECT_head_object( key => "data/key-2" )
-   ->RETURN_F( HTTP::Response->new( 200, "OK",
-      [
-         "Content-Length" => 135,
-      ] ), { Mtime => "2013-10-03T23:24:12Z" } );
-
-$s3->EXPECT_head_object( key => "data/key-3" )
-   ->RETURN_F( HTTP::Response->new( 200, "OK",
-      [
-         "Content-Length" => 147,
-      ] ), { Mtime => "2013-10-03T23:24:14Z" } );
-
+# ls -l
 {
+   $s3->EXPECT_list_bucket(
+      delimiter => "/",
+      prefix => "data/",
+   )->RETURN_F(
+      [
+         { key => "data/key-1" },
+         { key => "data/key-2" },
+         { key => "data/key-3" },
+      ],
+      [qw( data/prefix-1 data/prefix-2 )]
+   );
+
+   $s3->EXPECT_head_object( key => "data/key-1" )
+      ->RETURN_F( HTTP::Response->new( 200, "OK",
+         [
+            "Content-Length" => 123,
+         ] ), { Mtime => "2013-10-03T23:24:10Z" } );
+
+   $s3->EXPECT_head_object( key => "data/key-2" )
+      ->RETURN_F( HTTP::Response->new( 200, "OK",
+         [
+            "Content-Length" => 135,
+         ] ), { Mtime => "2013-10-03T23:24:12Z" } );
+
+   $s3->EXPECT_head_object( key => "data/key-3" )
+      ->RETURN_F( HTTP::Response->new( 200, "OK",
+         [
+            "Content-Length" => 147,
+         ] ), { Mtime => "2013-10-03T23:24:14Z" } );
+
    open my $outh, ">", \(my $output = "");
 
    $sfs3->cmd_ls( "", long => 1, stdout => $outh );
@@ -93,21 +95,22 @@ EOF
    no_more_expectations_ok;
 }
 
-$s3->EXPECT_list_bucket(
-   delimiter => "",
-   prefix => "data/",
-)->RETURN_F(
-   [
-      { key => "data/key-1" },
-      { key => "data/key-2" },
-      { key => "data/key-3" },
-      { key => "data/prefix-1/subkey-A" },
-      { key => "data/prefix-2/subkey-B" },
-   ],
-   []
-);
-
+# ls -r
 {
+   $s3->EXPECT_list_bucket(
+      delimiter => "",
+      prefix => "data/",
+   )->RETURN_F(
+      [
+         { key => "data/key-1" },
+         { key => "data/key-2" },
+         { key => "data/key-3" },
+         { key => "data/prefix-1/subkey-A" },
+         { key => "data/prefix-2/subkey-B" },
+      ],
+      []
+   );
+
    open my $outh, ">", \(my $output = "");
 
    $sfs3->cmd_ls( "", recurse => 1, stdout => $outh );
@@ -125,17 +128,18 @@ EOF
    no_more_expectations_ok;
 }
 
-$s3->EXPECT_list_bucket(
-   delimiter => "/",
-   prefix => "data/prefix-1/",
-)->RETURN_F(
-   [
-      { key => "data/prefix-1/subkey-A" },
-   ],
-   []
-);
-
+# ls prefix-1
 {
+   $s3->EXPECT_list_bucket(
+      delimiter => "/",
+      prefix => "data/prefix-1/",
+   )->RETURN_F(
+      [
+         { key => "data/prefix-1/subkey-A" },
+      ],
+      []
+   );
+
    open my $outh, ">", \(my $output = "");
 
    $sfs3->cmd_ls( "prefix-1/", stdout => $outh );

@@ -16,25 +16,26 @@ my $sfs3 = SocialFlow::S3->new(
    quiet  => 1,
 );
 
-$s3->EXPECT_list_bucket(
-   delimiter => "/",
-   prefix    => "meta/key-3/"
-)->RETURN_F(
-   [
-      { key => "meta/key-3/md5sum" },
-   ],
-   []
-);
-
-$s3->EXPECT_delete_object(
-   key => "data/key-3"
-)->RETURN_F();
-
-$s3->EXPECT_delete_object(
-   key => "meta/key-3/md5sum"
-)->RETURN_F();
-
+# rm key-3
 {
+   $s3->EXPECT_list_bucket(
+      delimiter => "/",
+      prefix    => "meta/key-3/"
+   )->RETURN_F(
+      [
+         { key => "meta/key-3/md5sum" },
+      ],
+      []
+   );
+
+   $s3->EXPECT_delete_object(
+      key => "data/key-3"
+   )->RETURN_F();
+
+   $s3->EXPECT_delete_object(
+      key => "meta/key-3/md5sum"
+   )->RETURN_F();
+
    $sfs3->cmd_rm( "key-3" );
 
    no_more_expectations_ok;
