@@ -44,4 +44,6 @@ $s3->EXPECT_get_object(
    is( $output, "The value of key-1", 'output from cmd_cat' );
 }
 
+ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+
 done_testing;

@@ -64,4 +64,6 @@ $s3->EXPECT_put_object(
    is( $put_md5sum, "157e3a08ddc87ae336292e4a363b715d\n", 'PUT meta md5' );
 }
 
+ok( $s3->NO_MORE_EXPECTATIONS, 'All expected methods called' );
+
 done_testing;

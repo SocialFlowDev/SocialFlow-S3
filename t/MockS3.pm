@@ -42,6 +42,8 @@ foreach my $method (qw( list_bucket head_object get_object put_object )) {
          my $args = $e->[1];
          $args->{$_} eq $args{$_} or next EXPECT for keys %$args;
 
+         @expectations = grep { $_ != $e } @expectations;
+
          delete @args{keys %$args};
 
          return $e->[2]->( %args );
@@ -50,6 +52,8 @@ foreach my $method (qw( list_bucket head_object get_object put_object )) {
       die "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
    };
 }
+
+sub NO_MORE_EXPECTATIONS { !@expectations }
 
 package t::MockS3::Http;
 sub configure {}
