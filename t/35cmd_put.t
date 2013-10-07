@@ -20,7 +20,7 @@ my $sfs3 = SocialFlow::S3->new(
 IO::Async::Loop->new->add( $sfs3 );
 
 t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
-   fopen_read fstat_size_mtime
+   fopen_read fstat_type_size_mtime
 ));
 
 # put local-file key-1
@@ -36,8 +36,9 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
       return $rd;
    });
 
-   $sfs3->EXPECT_fstat_size_mtime(
+   $sfs3->EXPECT_fstat_type_size_mtime(
    )->RETURN(
+      "f", # type
       21, # length
       1380896764, # mtime
    );

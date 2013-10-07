@@ -350,12 +350,17 @@ sub fopen_write
    return $fh;
 }
 
-sub fstat_size_mtime
+sub fstat_type_size_mtime
 {
    my $self = shift;
    my %args = @_;
 
-   return +( stat $args{fh} )[7,9];
+   my ( $size, $mtime ) = ( stat $args{fh} // $args{path} )[7,9];
+
+   return
+      -d _ ? "d" : -f _ ? "f" : "?",
+      $size,
+      $mtime;
 }
 
 sub futime
@@ -685,7 +690,7 @@ sub put_file
 
    my $fh = $self->fopen_read( path => $localpath );
 
-   my ( $len_total, $mtime ) = $self->fstat_size_mtime( fh => $fh );
+   my ( undef, $len_total, $mtime ) = $self->fstat_type_size_mtime( fh => $fh );
    $args{on_progress}->( 0, $len_total ) if $args{on_progress};
 
    $self->_put_file_from_fh( $fh, $s3path,
