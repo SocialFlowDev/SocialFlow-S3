@@ -732,6 +732,9 @@ sub _get_file_to_code
                            $$buffref = "";
                         },
                      },
+                     setup => [
+                        stderr => [ open => ">>", "/dev/null" ],
+                     ],
                      on_finish => sub {
                         my ( undef, $exitcode ) = @_;
                         $gpg_future->done;
