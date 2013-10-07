@@ -7,3 +7,4 @@
 /README
 /Makefile.PL
 /blib/
+/t/gnupg/random_seed

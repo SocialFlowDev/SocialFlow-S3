@@ -15,3 +15,4 @@ README
 src
 include
 etc
+t/gnupg/random_seed
