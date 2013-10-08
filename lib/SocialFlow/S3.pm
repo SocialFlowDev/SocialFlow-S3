@@ -355,12 +355,23 @@ sub fstat_type_size_mtime
    my $self = shift;
    my %args = @_;
 
-   my ( $size, $mtime ) = ( stat $args{fh} // $args{path} )[7,9];
+   my ( $size, $mtime ) = ( stat ($args{fh} // $args{path}) )[7,9];
 
    return
       -d _ ? "d" : -f _ ? "f" : "?",
       $size,
       $mtime;
+}
+
+sub freaddir
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $path = $args{path};
+
+   opendir my $dirh, $path or die "Cannot opendir $path - $!\n";
+   return readdir $dirh;
 }
 
 sub futime
@@ -1053,24 +1064,22 @@ sub cmd_push
       my $localpath = join "/", grep { defined } $localroot, $relpath;
 
       $self->print_message( "Scanning $localpath..." );
-      opendir my $dirh, $localpath or die "Cannot opendir $localpath - $!\n";
 
       my @moredirs;
-      foreach ( sort readdir $dirh ) {
+      foreach ( sort $self->freaddir( path => $localpath ) ) {
          next if $_ eq "." or $_ eq "..";
 
          my $ent = join "/", grep { defined } $relpath, $_;
 
-         stat "$localroot/$ent" or next;
+         my ( $type, $size ) = $self->fstat_type_size_mtime( path => "$localroot/$ent" );
 
-         if( -d _ ) {
+         if( $type eq "d" ) {
             push @moredirs, $ent;
          }
-         elsif( -f _ ) {
+         elsif( $type eq "f" ) {
             next unless $filter->( $ent );
-            my $bytes = -s _;
-            push @files, [ $ent, $bytes ];
-            $total_bytes += $bytes;
+            push @files, [ $ent, $size ];
+            $total_bytes += $size;
          }
       }
 
