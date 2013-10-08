@@ -15,20 +15,20 @@ my $sfs3 = SocialFlow::S3->new(
    bucket => "bucket-name/with-prefix",
 );
 
+$s3->EXPECT_list_bucket(
+   delimiter => "/",
+   prefix => "data/",
+)->RETURN_F(
+   [
+      { key => "data/key-1" },
+      { key => "data/key-2" },
+      { key => "data/key-3" },
+   ],
+   [qw( data/prefix-1 data/prefix-2 )]
+)->PERSIST;
+
 # ls
 {
-   $s3->EXPECT_list_bucket(
-      delimiter => "/",
-      prefix => "data/",
-   )->RETURN_F(
-      [
-         { key => "data/key-1" },
-         { key => "data/key-2" },
-         { key => "data/key-3" },
-      ],
-      [qw( data/prefix-1 data/prefix-2 )]
-   );
-
    open my $outh, ">", \(my $output = "");
 
    $sfs3->cmd_ls( "", stdout => $outh );
@@ -48,18 +48,6 @@ EOF
 
 # ls -l
 {
-   $s3->EXPECT_list_bucket(
-      delimiter => "/",
-      prefix => "data/",
-   )->RETURN_F(
-      [
-         { key => "data/key-1" },
-         { key => "data/key-2" },
-         { key => "data/key-3" },
-      ],
-      [qw( data/prefix-1 data/prefix-2 )]
-   );
-
    $s3->EXPECT_head_object( key => "data/key-1" )
       ->RETURN_F( HTTP::Response->new( 200, "OK",
          [

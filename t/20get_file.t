@@ -22,27 +22,27 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
 
 my $content = "The value of key-1";
 
+$s3->EXPECT_get_object(
+   key => "meta/key-1/md5sum"
+)->RETURN_F(
+   "e28cbeebcc243df62a59d90ddfe4b3e8" # md5sum of $content
+)->PERSIST;
+
+$s3->EXPECT_get_object(
+   key => "data/key-1"
+)->RETURN_WITH( sub {
+   my %args = @_;
+   my $on_chunk = $args{on_chunk};
+   my $header = HTTP::Response->new( 200, "OK",
+      [
+      ] );
+   $on_chunk->( $header, $content );
+   $on_chunk->( $header, undef );
+   return Future->new->done( $content, $header, { Mtime => "2013-10-04T17:40:59Z" } );
+})->PERSIST;
+
 # ->_get_file_to_code
 {
-   $s3->EXPECT_get_object(
-      key => "meta/key-1/md5sum"
-   )->RETURN_F(
-      "e28cbeebcc243df62a59d90ddfe4b3e8" # md5sum of $content
-   );
-
-   $s3->EXPECT_get_object(
-      key => "data/key-1"
-   )->RETURN_WITH( sub {
-      my %args = @_;
-      my $on_chunk = $args{on_chunk};
-      my $header = HTTP::Response->new( 200, "OK",
-         [
-         ] );
-      $on_chunk->( $header, $content );
-      $on_chunk->( $header, undef );
-      return Future->new->done( $content, $header, {} );
-   });
-
    my $got_content = "";
    my $f = $sfs3->_get_file_to_code(
       "key-1", sub { $got_content .= $_[1] if defined $_[1] }
@@ -64,25 +64,6 @@ my $content = "The value of key-1";
    )->RETURN_WITH( sub {
       open $fh, ">", \$written;
       return $fh;
-   });
-
-   $s3->EXPECT_get_object(
-      key => "meta/key-1/md5sum"
-   )->RETURN_F(
-      "e28cbeebcc243df62a59d90ddfe4b3e8" # md5sum of $content
-   );
-
-   $s3->EXPECT_get_object(
-      key => "data/key-1"
-   )->RETURN_WITH( sub {
-      my %args = @_;
-      my $on_chunk = $args{on_chunk};
-      my $header = HTTP::Response->new( 200, "OK",
-         [
-         ] );
-      $on_chunk->( $header, $content );
-      $on_chunk->( $header, undef );
-      return Future->new->done( $content, $header, { Mtime => "2013-10-04T17:40:59Z" } );
    });
 
    my $mtime;
