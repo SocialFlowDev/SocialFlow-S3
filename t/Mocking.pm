@@ -10,7 +10,9 @@ our @EXPORT = qw(
 
 # A micro expectation-based mocking system
 
-my @expectations; # [] = [$package, $method, \%args, return]
+my @expectations; # [] = [$package, $method, \%args, $flags, return]
+
+use constant FLAG_PERSIST => 0x01;
 
 sub mock_methods
 {
@@ -34,7 +36,7 @@ sub mock_methods_into
          shift;
          my %args = @_;
          push @expectations, my $e =
-            bless [ $pkg, $method => \%args, undef ], "t::Mocking::Expectation";
+            bless [ $pkg, $method => \%args, 0, undef ], "t::Mocking::Expectation";
          return $e;
       };
 
@@ -48,11 +50,11 @@ sub mock_methods_into
             my $args = $e->[2];
             $args->{$_} eq $args{$_} or next EXPECT for keys %$args;
 
-            @expectations = grep { $_ != $e } @expectations;
+            @expectations = grep { $_ != $e } @expectations unless $e->[3] & FLAG_PERSIST;
 
             delete @args{keys %$args};
 
-            return $e->[3]->( %args );
+            return $e->[4]->( %args );
          }
 
          die "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
@@ -62,7 +64,8 @@ sub mock_methods_into
 
 sub no_more_expectations_ok
 {
-   Test::More::ok( !@expectations, 'All expected methods were called' );
+   Test::More::ok( !( grep { !($_->[3] & FLAG_PERSIST) } @expectations ),
+      'All expected methods were called' );
 }
 
 package t::Mocking::Expectation;
@@ -70,7 +73,8 @@ package t::Mocking::Expectation;
 sub RETURN_WITH
 {
    my $e = shift;
-   ( $e->[3] ) = @_;
+   ( $e->[4] ) = @_;
+   return $e;
 }
 
 sub RETURN
@@ -84,6 +88,13 @@ sub RETURN_F
 {
    my $e = shift;
    $e->RETURN( Future->new->done( @_ ) );
+}
+
+sub PERSIST
+{
+   my $e = shift;
+   $e->[3] |= t::Mocking::FLAG_PERSIST;
+   return $e;
 }
 
 1;
