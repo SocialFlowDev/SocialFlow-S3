@@ -8,6 +8,7 @@ use Test::More;
 use SocialFlow::S3;
 use t::Mocking;
 use t::MockS3;
+use Digest::MD5 qw( md5_hex );
 use HTTP::Response;
 
 use IO::Async::Loop;
@@ -60,7 +61,7 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
       }
 
       # MD5sum and length in bytes
-      return Future->new->done( "157e3a08ddc87ae336292e4a363b715d", 21 );
+      return Future->new->done( md5_hex( $put_content ), 21 );
    });
 
    $s3->EXPECT_put_object(

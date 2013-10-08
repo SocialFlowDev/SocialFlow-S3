@@ -8,6 +8,7 @@ use Test::More;
 use SocialFlow::S3;
 use t::Mocking;
 use t::MockS3;
+use Digest::MD5 qw( md5_hex );
 use HTTP::Response;
 
 my $sfs3 = SocialFlow::S3->new(
@@ -21,10 +22,9 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
 ));
 
 my %CONTENT = (
-                 # value    md5sum
-   "tree/A/1" => [ "one",   "f97c5d29941bfb1b2fdab0874906ab82" ],
-   "tree/A/2" => [ "two",   "b8a9f715dbb64fd5c56e7783c6820a61" ],
-   "tree/B/3" => [ "three", "35d6d33467aae9a2e3dccb4b6b027878" ],
+   "tree/A/1" => "one",
+   "tree/A/2" => "two",
+   "tree/B/3" => "three",
 );
 my $MTIME = "2013-10-07T23:24:25Z";
 
@@ -36,17 +36,17 @@ $s3->EXPECT_list_bucket()->RETURN_WITH( sub {
       my $key = "data/$_";
       push @keys, {
          key  => $key,
-         size => length $CONTENT{$_}[0],
+         size => length $CONTENT{$_},
       } if $key =~ m/^\Q$prefix/;
    }
    return Future->new->done( \@keys, [] );
 });
 
 foreach my $k ( keys %CONTENT ) {
-   my $content = $CONTENT{$k}[0];
+   my $content = $CONTENT{$k};
 
    $s3->EXPECT_get_object( key => "meta/$k/md5sum" )->RETURN_F(
-      $CONTENT{$k}[1]
+      md5_hex( $content )
    );
 
    $s3->EXPECT_get_object( key => "data/$k" )->RETURN_WITH( sub {

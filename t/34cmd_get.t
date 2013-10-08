@@ -8,6 +8,7 @@ use Test::More;
 use SocialFlow::S3;
 use t::Mocking;
 use t::MockS3;
+use Digest::MD5 qw( md5_hex );
 use HTTP::Response;
 
 my $sfs3 = SocialFlow::S3->new(
@@ -36,7 +37,7 @@ my $content = "The value of key-1";
    $s3->EXPECT_get_object(
       key => "meta/key-1/md5sum"
    )->RETURN_F(
-      "e28cbeebcc243df62a59d90ddfe4b3e8" # md5sum of $content
+      md5_hex( $content )
    );
 
    $s3->EXPECT_get_object(
