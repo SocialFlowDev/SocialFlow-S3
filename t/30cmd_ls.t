@@ -18,14 +18,17 @@ my $sfs3 = SocialFlow::S3->new(
 $s3->EXPECT_list_bucket(
    delimiter => "/",
    prefix => "data/",
-)->RETURN_F(
-   [
-      { key => "data/key-1" },
-      { key => "data/key-2" },
-      { key => "data/key-3" },
-   ],
-   [qw( data/prefix-1 data/prefix-2 )]
-)->PERSIST;
+)->RETURN_WITH( sub {
+   # ->cmd_list destroys the list of prefixes
+   return Future->new->done(
+      [
+         { key => "data/key-1" },
+         { key => "data/key-2" },
+         { key => "data/key-3" },
+      ],
+      [qw( data/prefix-1 data/prefix-2 )]
+   );
+})->PERSIST;
 
 # ls
 {
