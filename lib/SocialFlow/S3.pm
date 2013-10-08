@@ -775,7 +775,7 @@ sub _get_file_to_code
 
       my $got_md5sum = $md5->hexdigest;
       if( $exp_md5sum ne $got_md5sum ) {
-         die "Expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+         die "MD5sum failed for $s3path - expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
       }
 
       Future->new->done( $header, $meta );
