@@ -18,7 +18,7 @@ my $sfs3 = SocialFlow::S3->new(
 );
 
 t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
-   fopen_write futime
+   fopen_write fstat_type_size_mtime futime
 ));
 
 my %CONTENT = (
@@ -40,25 +40,35 @@ $s3->EXPECT_list_bucket()->RETURN_WITH( sub {
       } if $key =~ m/^\Q$prefix/;
    }
    return Future->new->done( \@keys, [] );
-});
+})->PERSIST;
 
 foreach my $k ( keys %CONTENT ) {
    my $content = $CONTENT{$k};
 
    $s3->EXPECT_get_object( key => "meta/$k/md5sum" )->RETURN_F(
       md5_hex( $content )
-   );
+   )->PERSIST;
+
+   $s3->EXPECT_head_object( key => "data/$k" )->RETURN_WITH( sub {
+      my %args = @_;
+      my $header = HTTP::Response->new( 200, "OK",
+         [
+            "Content-Length" => length( $content ),
+         ] );
+      return Future->new->done( $header, { Mtime => $MTIME } );
+   })->PERSIST;
 
    $s3->EXPECT_get_object( key => "data/$k" )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};
       my $header = HTTP::Response->new( 200, "OK",
          [
+            "Content-Length" => length( $content ),
          ] );
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       return Future->new->done( $content, $header, { Mtime => $MTIME } );
-   });
+   })->PERSIST;
 }
 
 # pull --all
@@ -78,6 +88,39 @@ foreach my $k ( keys %CONTENT ) {
    }
 
    $sfs3->cmd_pull( "tree", "tree", skip_logic => "all" );
+
+   no_more_expectations_ok;
+
+   is_deeply( \%written_content,
+              \%CONTENT,
+              'written content of files' );
+}
+
+# pull [default == stat]
+{
+   # claim two files are up to date, one not
+   $sfs3->EXPECT_fstat_type_size_mtime( path => "tree/A/1" )
+      ->RETURN( "f", 3, 1381188265 );
+   $sfs3->EXPECT_fstat_type_size_mtime( path => "tree/A/2" )
+      ->RETURN( "f", 3, 1381000000 );
+   $sfs3->EXPECT_fstat_type_size_mtime( path => "tree/B/3" )
+      ->RETURN( "f", 5, 1381188265 );
+
+   my %written_content;
+
+   foreach my $f (qw( A/2 )) {
+      $sfs3->EXPECT_fopen_write( path => "tree/$f" )->RETURN_WITH( sub {
+         open my $fh, ">", \$written_content{"tree/$f"};
+         return $fh;
+      });
+
+      $sfs3->EXPECT_futime( path => "tree/$f",
+         atime => 1381188265,
+         mtime => 1381188265,
+      )->RETURN();
+   }
+
+   $sfs3->cmd_pull( "tree", "tree", skip_logic => "stat" );
 
    no_more_expectations_ok;
 }

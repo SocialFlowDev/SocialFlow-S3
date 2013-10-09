@@ -93,4 +93,49 @@ $sfs3->EXPECT_fstat_type_size_mtime()->RETURN_WITH( sub {
    no_more_expectations_ok;
 }
 
+# pull [default == stat]
+{
+   # claim two files are up to date, one not
+   foreach my $k ( keys %CONTENT ) {
+      my $content = $CONTENT{$k};
+      my $mtime = $k eq "tree/A/2" ? "2013-09-01T12:34:56Z" : $MTIME;
+
+      $s3->EXPECT_get_object( key => "meta/$k/md5sum" )->RETURN_F(
+         md5_hex( $content )
+      );
+
+      $s3->EXPECT_head_object( key => "data/$k" )->RETURN_WITH( sub {
+         my %args = @_;
+         my $header = HTTP::Response->new( 200, "OK",
+            [
+               "Content-Length" => length( $content ),
+            ] );
+         return Future->new->done( $header, { Mtime => $mtime } );
+      });
+   }
+
+   $s3->EXPECT_put_object( key => "data/tree/A/2" )->RETURN_WITH( sub {
+      my %args = @_;
+      my $gen_parts = $args{gen_parts};
+
+      my $content = "";
+      while( my @part = $gen_parts->() ) {
+         # $part[0] should be a Future
+         $content .= $part[0]->get;
+      }
+
+      return Future->new->done( md5_hex( $content ), length $content );
+   });
+
+   $s3->EXPECT_put_object(
+      key => "meta/tree/A/2/md5sum"
+   )->RETURN_F(
+      "ETAG", 32
+   );
+
+   $sfs3->cmd_push( "tree", "tree", skip_logic => "stat" );
+
+   no_more_expectations_ok;
+}
+
 done_testing;
