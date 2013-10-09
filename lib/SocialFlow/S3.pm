@@ -447,7 +447,7 @@ sub test_skip
          $f = Future->new->done( 0 );
       }
       when( "stat" ) {
-         my ( $size, $mtime ) = ( stat $localpath )[7,9];
+         my ( undef, $size, $mtime ) = $self->fstat_type_size_mtime( path => $localpath );
          defined $size or return Future->new->done( 0 );
 
          # Fetch the md5sum meta anyway even if we aren't going to use it, because if
