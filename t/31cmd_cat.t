@@ -11,11 +11,14 @@ use t::MockS3;
 use Digest::MD5 qw( md5_hex );
 use HTTP::Response;
 
+use IO::Async::Loop;
+
 my $sfs3 = SocialFlow::S3->new(
    s3     => my $s3 = t::MockS3->new,
    bucket => "bucket-name/with-prefix",
    quiet  => 1,
 );
+IO::Async::Loop->new->add( $sfs3 );
 
 my $content = "The value of key-1";
 
