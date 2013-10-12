@@ -43,7 +43,7 @@ my $content = "The value of key-1";
       md5_hex( $content )
    );
 
-   $s3->EXPECT_get_object(
+   $s3->EXPECT_head_then_get_object(
       key => "data/key-1"
    )->RETURN_WITH( sub {
       my %args = @_;
@@ -53,7 +53,10 @@ my $content = "The value of key-1";
          ] );
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
-      return Future->new->done( $content, $header, { Mtime => "2013-10-04T17:40:59Z" } );
+      my $meta = { Mtime => "2013-10-04T17:40:59Z" };
+      return Future->new->done(
+         Future->new->done( $content, $header, $meta ), $header, $meta
+      );
    });
 
    my $mtime;

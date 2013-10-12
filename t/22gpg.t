@@ -101,7 +101,7 @@ my $ciphertext_md5sum;
       $ciphertext_md5sum,
    );
 
-   $s3->EXPECT_get_object(
+   $s3->EXPECT_head_then_get_object(
       key => "data/secret"
    )->RETURN_WITH( sub {
       my %args = @_;
@@ -112,7 +112,11 @@ my $ciphertext_md5sum;
          ] );
       $on_chunk->( $header, $ciphertext_content );
       $on_chunk->( $header, undef );
-      return Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } );
+      return Future->new->done(
+         Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } ),
+         $header,
+         { %ciphertext_meta },
+      );
    });
 
    my $got_content = "";

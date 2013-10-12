@@ -61,7 +61,7 @@ foreach my $k ( keys %CONTENT ) {
       return Future->new->done( $header, { Mtime => $MTIME } );
    })->PERSIST;
 
-   $s3->EXPECT_get_object( key => "data/$k" )->RETURN_WITH( sub {
+   $s3->EXPECT_head_then_get_object( key => "data/$k" )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};
       my $header = HTTP::Response->new( 200, "OK",
@@ -70,7 +70,10 @@ foreach my $k ( keys %CONTENT ) {
          ] );
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
-      return Future->new->done( $content, $header, { Mtime => $MTIME } );
+      my $meta = { Mtime => $MTIME };
+      return Future->new->done(
+         Future->new->done( $content, $header, $meta ), $header, $meta
+      );
    })->PERSIST;
 }
 

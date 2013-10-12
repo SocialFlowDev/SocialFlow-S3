@@ -11,7 +11,7 @@ use Future::Utils qw( fmap1 fmap_void );
 use IO::Async::Process;
 use IO::Async::Stream;
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.13; # no-parts bugfix
+use Net::Async::Webservice::S3 0.14; # ->head_then_get_object
 
 use Digest::MD5;
 use File::Basename qw( dirname );
@@ -710,41 +710,6 @@ sub put_file
    );
 }
 
-# TODO: Make this a method on NaWS:S3
-#
-# =head2 $sfs3->head_then_get_object( %args ) ==> $header, $body_future ==> $body
-sub head_then_get_object
-{
-   my $self = shift;
-   my %args = @_;
-
-   my $on_chunk = $args{on_chunk};
-   my $head_future = $self->loop->new_future;
-   my $body_future;
-
-   # TODO: This doesn't handle cancellation
-
-   $self->{s3}->get_object(
-      key => $args{key},
-      on_chunk => sub {
-         my ( $header, $data ) = @_;
-
-         if( !$body_future ) {
-            $body_future = $head_future->new;
-            $head_future->done( $header, $body_future );
-         }
-
-         $on_chunk->( $header, $data ) if $on_chunk;
-      }
-   )->on_fail( sub {
-      ( $body_future || $head_future )->fail( @_ );
-   })->on_done( sub {
-      $body_future->done( @_ )
-   });
-
-   return $head_future;
-}
-
 sub _get_file_to_code
 {
    my $self = shift;
@@ -764,7 +729,7 @@ sub _get_file_to_code
       $self->get_meta( $s3path, "md5sum" )
          ->transform( done => sub { chomp $_[0]; $_[0] } ),
 
-      $self->head_then_get_object(
+      $self->{s3}->head_then_get_object(
          key      => "data/$s3path",
          on_chunk => sub {
             my ( $header, $data ) = @_;
@@ -776,9 +741,9 @@ sub _get_file_to_code
             }
          },
       )->then( sub {
-         my ( $header, $body_future ) = @_;
+         my ( $value_f, $header, $meta ) = @_;
 
-         if( defined $header->header( "X-Amz-Meta-Keyid" ) ) {
+         if( defined $meta->{Keyid} ) {
             my $gpg_future = $self->loop->new_future;
             my $gpg_process = IO::Async::Process->new(
                command => [ "gpg", "--decrypt", "-" ],
@@ -814,10 +779,10 @@ sub _get_file_to_code
                undef $prebuffer_more;
             }
 
-            return $body_future->then( sub {
+            return $value_f->then( sub {
                # Close pipe to gpg and wait for it to finish
                $gpg_stdin->close_when_empty;
-               return $gpg_future->then( sub { $body_future } );
+               return $gpg_future->then( sub { $value_f } );
             });
          }
          else {
@@ -830,7 +795,7 @@ sub _get_file_to_code
                undef $prebuffer_more;
             }
 
-            return $body_future;
+            return $value_f;
          }
       })
    )->then( sub {

@@ -6,7 +6,7 @@ use base qw( IO::Async::Notifier );
 
 use t::Mocking;
 t::Mocking->mock_methods(qw(
-   list_bucket head_object get_object put_object delete_object
+   list_bucket head_object get_object head_then_get_object put_object delete_object
 ));
 
 sub _init
