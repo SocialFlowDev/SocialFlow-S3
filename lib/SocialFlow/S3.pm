@@ -710,6 +710,41 @@ sub put_file
    );
 }
 
+# TODO: Make this a method on NaWS:S3
+#
+# =head2 $sfs3->head_then_get_object( %args ) ==> $header, $body_future ==> $body
+sub head_then_get_object
+{
+   my $self = shift;
+   my %args = @_;
+
+   my $on_chunk = $args{on_chunk};
+   my $head_future = $self->loop->new_future;
+   my $body_future;
+
+   # TODO: This doesn't handle cancellation
+
+   $self->{s3}->get_object(
+      key => $args{key},
+      on_chunk => sub {
+         my ( $header, $data ) = @_;
+
+         if( !$body_future ) {
+            $body_future = $head_future->new;
+            $head_future->done( $header, $body_future );
+         }
+
+         $on_chunk->( $header, $data ) if $on_chunk;
+      }
+   )->on_fail( sub {
+      ( $body_future || $head_future )->fail( @_ );
+   })->on_done( sub {
+      $body_future->done( @_ )
+   });
+
+   return $head_future;
+}
+
 sub _get_file_to_code
 {
    my $self = shift;
@@ -717,70 +752,88 @@ sub _get_file_to_code
 
    my $md5 = Digest::MD5->new;
 
-   my $initial = 1;
-
-   my $gpg_stdin;
-   my $gpg_future; # undef unless we're waiting for GPG as well
+   # A buffer of data saved before $on_more was set. This is usually needed
+   # only in synchronous cases, such as during the unit tests.
+   my $prebuffer_more;
+   my $on_more;
+   # TODO: it may be possible make this part neater, but that would involve
+   # being able to have a byte pipeline through an incomplete Future, which
+   # is currently not possible.
 
    Future->needs_all(
       $self->get_meta( $s3path, "md5sum" )
          ->transform( done => sub { chomp $_[0]; $_[0] } ),
-      $self->{s3}->get_object(
-         key    => "data/$s3path",
+
+      $self->head_then_get_object(
+         key      => "data/$s3path",
          on_chunk => sub {
             my ( $header, $data ) = @_;
+            if( $on_more ) {
+               $on_more->( $data );
+            }
+            else {
+               $prebuffer_more .= $data if defined $data;
+            }
+         },
+      )->then( sub {
+         my ( $header, $body_future ) = @_;
 
-            if( $initial ) {
-               $initial--;
+         if( defined $header->header( "X-Amz-Meta-Keyid" ) ) {
+            my $gpg_future = $self->loop->new_future;
+            my $gpg_process = IO::Async::Process->new(
+               command => [ "gpg", "--decrypt", "-" ],
+               stdin  => { via => "pipe_write" },
+               stdout => {
+                  on_read => sub {
+                     my ( undef, $buffref ) = @_;
+                     $md5->add( $$buffref );
+                     $on_data->( $header, $$buffref );
+                     $$buffref = "";
+                  },
+               },
+               setup => [
+                  stderr => [ open => ">>", "/dev/null" ],
+               ],
+               on_finish => sub {
+                  my ( undef, $exitcode ) = @_;
+                  $gpg_future->done;
+                  $exitcode == 0 and return;
 
-               if( defined $header->header( "X-Amz-Meta-Keyid" ) ) {
-                  my $orig_on_data = $on_data;
+                  die "gpg exited non-zero $exitcode\n";
+               },
+            );
+            $self->add_child( $gpg_process );
 
-                  $gpg_future = $self->loop->new_future;
-                  my $gpg_process = IO::Async::Process->new(
-                     command => [ "gpg", "--decrypt", "-" ],
-                     stdin  => { via => "pipe_write" },
-                     stdout => {
-                        on_read => sub {
-                           my ( undef, $buffref ) = @_;
-                           $md5->add( $$buffref );
-                           $orig_on_data->( $header, $$buffref );
-                           $$buffref = "";
-                        },
-                     },
-                     setup => [
-                        stderr => [ open => ">>", "/dev/null" ],
-                     ],
-                     on_finish => sub {
-                        my ( undef, $exitcode ) = @_;
-                        $gpg_future->done;
-                        $exitcode == 0 and return;
+            my $gpg_stdin = $gpg_process->stdin;
 
-                        die "gpg exited non-zero $exitcode\n";
-                     },
-                  );
-                  $self->add_child( $gpg_process );
-
-                  $gpg_stdin = $gpg_process->stdin;
-
-                  $on_data = sub {
-                     $gpg_stdin->write( $_[1] );
-                  };
-               }
+            $on_more = sub {
+               $gpg_stdin->write( $_[0] );
+            };
+            if( defined $prebuffer_more ) {
+               $on_more->( $prebuffer_more );
+               undef $prebuffer_more;
             }
 
-            $md5->add( $data ) if defined $data and !$gpg_stdin;
-            $on_data->( $header, $data );
-         },
-      )
-   )->and_then( sub {
-      my $f = shift;
-      return $f unless defined $gpg_future;
+            return $body_future->then( sub {
+               # Close pipe to gpg and wait for it to finish
+               $gpg_stdin->close_when_empty;
+               return $gpg_future->then( sub { $body_future } );
+            });
+         }
+         else {
+            $on_more = sub {
+               $md5->add( $_[0] ) if defined $_[0];
+               $on_data->( $header, $_[0] );
+            };
+            if( defined $prebuffer_more ) {
+               $on_more->( $prebuffer_more );
+               undef $prebuffer_more;
+            }
 
-      # Close pipe to gpg and wait for it to finish
-      $gpg_stdin->close_when_empty;
-      $gpg_future->then( sub { $f } );
-   })->then( sub {
+            return $body_future;
+         }
+      })
+   )->then( sub {
       my ( $exp_md5sum, undef, $header, $meta ) = @_;
       $on_data->( $header, undef ); # Indicate EOF
 
