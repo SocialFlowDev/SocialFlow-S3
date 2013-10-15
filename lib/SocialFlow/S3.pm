@@ -7,7 +7,7 @@ use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
 use Future;
-use Future::Utils qw( fmap1 fmap_void );
+use Future::Utils qw( try_repeat fmap1 fmap_void );
 use IO::Async::Process;
 use IO::Async::Stream;
 use IO::Async::Timer::Periodic;
@@ -822,24 +822,53 @@ sub get_file
    my $len_total;
    my $len_so_far;
 
-   $self->_get_file_to_code(
-      $s3path,
-      sub {
-         my ( $header, $data ) = @_;
-         return unless defined $data;
+   my $delay = 0.5;
+   my $retries = 3; # TODO: configurable
 
-         if( !defined $len_total ) {
-            $len_so_far = 0;
-            $len_total = $header->content_length;
+   ( try_repeat {
+      my ( $prev_f ) = @_;
 
-            $on_progress->( $len_so_far, $len_total ) if $on_progress;
-         }
+      # Add a small delay after failure before retrying
+      my $delay_f =
+         $prev_f ? $self->loop->delay_future( after => ( $delay *= 2 ) )
+                 : Future->new->done;
 
-         $fh->print( $data );
-         $len_so_far += length $data;
-         $on_progress->( $len_so_far, $len_total ) if $on_progress;
-      },
-   )->then( sub {
+      $delay_f->then( sub {
+         # clear previous content in case of retry
+         undef $len_total;
+
+         # Note: -technically- this truncate doesn't clear the in-memory scalar
+         # handle that t/20get_file.t 's unit test uses. But that's OK as we're
+         # going to overwrite its content anyway.
+         #   https://rt.perl.org/rt3/Public/Bug/Display.html?id=40241
+         $fh->seek( 0, 0 );
+         $fh->truncate( 0 );
+
+         $self->_get_file_to_code(
+            $s3path,
+            sub {
+               my ( $header, $data ) = @_;
+               return unless defined $data;
+
+               if( !defined $len_total ) {
+                  $len_so_far = 0;
+                  $len_total = $header->content_length;
+
+                  $on_progress->( $len_so_far, $len_total ) if $on_progress;
+               }
+
+               $fh->print( $data );
+               $len_so_far += length $data;
+               $on_progress->( $len_so_far, $len_total ) if $on_progress;
+            },
+         )
+      });
+   } while => sub {
+      my $f = shift;
+      my ( $failure, $request, $response ) = $f->failure or return 0; # success
+      return 0 if $response and $response->code =~ m/^4/; # don't retry HTTP 4xx
+      return --$retries;
+   })->then( sub {
       my ( $header, $meta ) = @_;
 
       close $fh;

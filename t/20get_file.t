@@ -127,4 +127,68 @@ $s3->EXPECT_get_object(
    ok( $failure, '_get_file_to_code fails after MD5sum mismatch' );
 }
 
+# ->get_file retries after MD5sum mismatch
+{
+   # First result corrupts the content
+   $s3->EXPECT_head_then_get_object(
+      key => "data/key-2"
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      my $on_chunk = $args{on_chunk};
+      my $header = HTTP::Response->new( 200, "OK",
+         [
+         ] );
+      $on_chunk->( $header, uc $content );
+      $on_chunk->( $header, undef );
+      my $meta = { Mtime => "2013-10-04T17:40:59Z" };
+      return Future->new->done(
+         Future->new->done( uc $content, $header, $meta ), $header, $meta,
+      );
+   });
+
+   # Second result is correct
+   $s3->EXPECT_head_then_get_object(
+      key => "data/key-2"
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      my $on_chunk = $args{on_chunk};
+      my $header = HTTP::Response->new( 200, "OK",
+         [
+         ] );
+      $on_chunk->( $header, $content );
+      $on_chunk->( $header, undef );
+      my $meta = { Mtime => "2013-10-04T17:40:59Z" };
+      return Future->new->done(
+         Future->new->done( $content, $header, $meta ), $header, $meta,
+      );
+   });
+
+   my $fh;
+   my $written;
+   $sfs3->EXPECT_fopen_write(
+      path => "local-file",
+   )->RETURN_WITH( sub {
+      open $fh, ">", \$written;
+      return $fh;
+   });
+
+   my $mtime;
+   $sfs3->EXPECT_futime(
+      path => "local-file"
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      $mtime = $args{mtime};
+   });
+
+   my $f = $sfs3->get_file( "key-2", "local-file" );
+
+   # This test involves timeouts
+   $f->get;
+
+   no_more_expectations_ok;
+
+   is( $written, $content, 'content of file from ->get_file' );
+   is( $mtime, 1380908459, 'utime() mtime of written file' );
+}
+
 done_testing;
