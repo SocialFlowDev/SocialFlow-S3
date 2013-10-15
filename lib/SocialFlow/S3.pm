@@ -47,6 +47,7 @@ sub _init
 
    $args->{timeout}       //= 10;
    $args->{stall_timeout} //= 30;
+   $args->{get_retries}   //= 3;
 
    $self->{status_lines} = 0;
 
@@ -63,7 +64,7 @@ sub configure
       $self->add_child( $self->{s3} = $s3 );
    }
 
-   foreach (qw( quiet )) {
+   foreach (qw( quiet get_retries )) {
       $self->{$_} = delete $args{$_} if exists $args{$_};
    }
 
@@ -823,7 +824,7 @@ sub get_file
    my $len_so_far;
 
    my $delay = 0.5;
-   my $retries = 3; # TODO: configurable
+   my $retries = $self->{get_retries};
 
    ( try_repeat {
       my ( $prev_f ) = @_;
