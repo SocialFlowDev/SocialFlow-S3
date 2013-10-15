@@ -91,4 +91,40 @@ $s3->EXPECT_head_then_get_object(
    is( $mtime, 1380908459, 'utime() mtime of written file' );
 }
 
+$s3->EXPECT_get_object(
+   key => "meta/key-2/md5sum"
+)->RETURN_F(
+   md5_hex( $content )
+)->PERSIST;
+
+# ->_get_file_to_code fails after MD5sum mismatch
+{
+   # First result corrupts the content
+   $s3->EXPECT_head_then_get_object(
+      key => "data/key-2"
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      my $on_chunk = $args{on_chunk};
+      my $header = HTTP::Response->new( 200, "OK",
+         [
+         ] );
+      $on_chunk->( $header, uc $content );
+      $on_chunk->( $header, undef );
+      my $meta = { Mtime => "2013-10-04T17:40:59Z" };
+      return Future->new->done(
+         Future->new->done( uc $content, $header, $meta ), $header, $meta,
+      );
+   });
+
+   my $got_content = "";
+   my $f = $sfs3->_get_file_to_code(
+      "key-2", sub { $got_content .= $_[1] if defined $_[1] }
+   );
+
+   no_more_expectations_ok;
+
+   my $failure = $f->failure;
+   ok( $failure, '_get_file_to_code fails after MD5sum mismatch' );
+}
+
 done_testing;
