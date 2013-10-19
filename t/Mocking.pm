@@ -68,6 +68,20 @@ sub no_more_expectations_ok
       'All expected methods were called' );
 }
 
+# TODO: This method is present in latest IO::Async source (0.61+bzr1246) but
+# that's not on CPAN.
+if( !defined &IO::Async::Future::done_later ) {
+   no strict 'refs';
+   *{"IO::Async::Future::done_later"} = sub {
+      my $self = shift;
+      my @result = @_;
+
+      $self->loop->later( sub { $self->done( @result ) });
+
+      return $self;
+   };
+}
+
 package t::Mocking::Expectation;
 
 sub RETURN_WITH

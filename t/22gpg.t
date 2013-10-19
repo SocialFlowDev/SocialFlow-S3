@@ -59,9 +59,7 @@ my $ciphertext_md5sum;
       }
 
       # MD5sum and length in bytes
-      my $f = $loop->new_future;
-      $loop->later( sub { $f->done( "ABC", 21 ); });
-      return $f;
+      return $loop->new_future->done_later( "ABC", 21 );
    });
 
    $s3->EXPECT_put_object(
@@ -70,9 +68,7 @@ my $ciphertext_md5sum;
       my %args = @_;
       $ciphertext_md5sum = $args{value};
 
-      my $f = $loop->new_future;
-      $loop->later( sub { $f->done( "ETAG", 32 ); });
-      return $f;
+      return $loop->new_future->done_later( "ETAG", 32 );
    });
 
    # Can't just pass an in-memory filehandle as IO::Async won't like it
@@ -116,15 +112,11 @@ my $ciphertext_md5sum;
          ] );
       $on_chunk->( $header, $ciphertext_content );
       $on_chunk->( $header, undef );
-      my $f = $loop->new_future;
-      $loop->later( sub {
-         $f->done(
-            Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } ),
-            $header,
-            { %ciphertext_meta },
-         );
-      });
-      return $f;
+      return $loop->new_future->done_later(
+         Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } ),
+         $header,
+         { %ciphertext_meta },
+      );
    });
 
    my $got_content = "";

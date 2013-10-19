@@ -43,11 +43,9 @@ $s3->EXPECT_head_then_get_object(
    $on_chunk->( $header, $content );
    $on_chunk->( $header, undef );
    my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-   my $f = $loop->new_future;
-   $loop->later( sub {
-      $f->done( Future->new->done( $content, $header, $meta ), $header, $meta );
-   });
-   return $f;
+   return $loop->new_future->done_later(
+      Future->new->done( $content, $header, $meta ), $header, $meta,
+   );
 })->PERSIST;
 
 # ->_get_file_to_code
@@ -113,11 +111,9 @@ $s3->EXPECT_get_object(
       $on_chunk->( $header, uc $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      my $f = $loop->new_future;
-      $loop->later( sub {
-         $f->done( Future->new->done( uc $content, $header, $meta ), $header, $meta );
-      });
-      return $f;
+      return $loop->new_future->done_later(
+         Future->new->done( uc $content, $header, $meta ), $header, $meta,
+      );
    });
 
    my $got_content = "";
@@ -145,11 +141,9 @@ $s3->EXPECT_get_object(
       $on_chunk->( $header, uc $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      my $f = $loop->new_future;
-      $loop->later( sub {
-         $f->done( Future->new->done( uc $content, $header, $meta ), $header, $meta );
-      });
-      return $f;
+      return $loop->new_future->done_later(
+         Future->new->done( uc $content, $header, $meta ), $header, $meta,
+      );
    });
 
    # Second result is correct
@@ -164,11 +158,9 @@ $s3->EXPECT_get_object(
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      my $f = $loop->new_future;
-      $loop->later( sub {
-         $f->done( Future->new->done( $content, $header, $meta ), $header, $meta );
-      });
-      return $f;
+      return $loop->new_future->done_later(
+         Future->new->done( $content, $header, $meta ), $header, $meta,
+      );
    });
 
    my $fh;

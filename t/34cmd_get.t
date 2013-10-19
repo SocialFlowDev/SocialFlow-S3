@@ -54,11 +54,9 @@ my $content = "The value of key-1";
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      my $f = $loop->new_future;
-      $loop->later( sub {
-         $f->done( Future->new->done( $content, $header, $meta ), $header, $meta );
-      });
-      return $f;
+      return $loop->new_future->done_later(
+         Future->new->done( $content, $header, $meta ), $header, $meta,
+      );
    });
 
    my $mtime;

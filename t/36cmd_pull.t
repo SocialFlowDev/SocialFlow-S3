@@ -42,9 +42,7 @@ $s3->EXPECT_list_bucket()->RETURN_WITH( sub {
          size => length $CONTENT{$_},
       } if $key =~ m/^\Q$prefix/;
    }
-   my $f = $loop->new_future;
-   $loop->later( sub { $f->done( \@keys, [] ); });
-   return $f;
+   return $loop->new_future->done_later( \@keys, [] );
 })->PERSIST;
 
 foreach my $k ( keys %CONTENT ) {
@@ -60,9 +58,7 @@ foreach my $k ( keys %CONTENT ) {
          [
             "Content-Length" => length( $content ),
          ] );
-      my $f = $loop->new_future;
-      $loop->later( sub { $f->done( $header, { Mtime => $MTIME } ); });
-      return $f;
+      return $loop->new_future->done_later( $header, { Mtime => $MTIME } );
    })->PERSIST;
 
    $s3->EXPECT_head_then_get_object( key => "data/$k" )->RETURN_WITH( sub {
@@ -75,11 +71,9 @@ foreach my $k ( keys %CONTENT ) {
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => $MTIME };
-      my $f = $loop->new_future;
-      $loop->later( sub {
-         $f->done( Future->new->done( $content, $header, $meta ), $header, $meta )
-      });
-      return $f;
+      return $loop->new_future->done_later(
+         Future->new->done( $content, $header, $meta ), $header, $meta,
+      );
    })->PERSIST;
 }
 

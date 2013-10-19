@@ -61,9 +61,7 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
       }
 
       # MD5sum and length in bytes
-      my $f = $loop->new_future;
-      $loop->later( sub { $f->done( md5_hex( $put_content ), 21 ); });
-      return $f;
+      return $loop->new_future->done_later( md5_hex( $put_content ), 21 );
    });
 
    $s3->EXPECT_put_object(
@@ -72,9 +70,7 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
       my %args = @_;
       $put_md5sum = $args{value};
 
-      my $f = $loop->new_future;
-      $loop->later( sub { $f->done( "ETAG", 32 ); });
-      return $f;
+      return $loop->new_future->done_later( "ETAG", 32 );
    });
 
    # Can't just pass an in-memory filehandle as IO::Async won't like it
