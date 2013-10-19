@@ -43,9 +43,11 @@ $s3->EXPECT_head_then_get_object(
    $on_chunk->( $header, $content );
    $on_chunk->( $header, undef );
    my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-   return Future->new->done(
-      Future->new->done( $content, $header, $meta ), $header, $meta,
-   );
+   my $f = $loop->new_future;
+   $loop->later( sub {
+      $f->done( Future->new->done( $content, $header, $meta ), $header, $meta );
+   });
+   return $f;
 })->PERSIST;
 
 # ->_get_file_to_code
@@ -55,9 +57,9 @@ $s3->EXPECT_head_then_get_object(
       "key-1", sub { $got_content .= $_[1] if defined $_[1] }
    );
 
-   no_more_expectations_ok;
-
    $f->get;
+
+   no_more_expectations_ok;
 
    is( $got_content, $content, 'content of file' );
 }
@@ -83,9 +85,9 @@ $s3->EXPECT_head_then_get_object(
 
    my $f = $sfs3->get_file( "key-1", "local-file" );
 
-   no_more_expectations_ok;
-
    $f->get;
+
+   no_more_expectations_ok;
 
    is( $written, $content, 'content of file from ->get_file' );
    is( $mtime, 1380908459, 'utime() mtime of written file' );
@@ -111,9 +113,11 @@ $s3->EXPECT_get_object(
       $on_chunk->( $header, uc $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      return Future->new->done(
-         Future->new->done( uc $content, $header, $meta ), $header, $meta,
-      );
+      my $f = $loop->new_future;
+      $loop->later( sub {
+         $f->done( Future->new->done( uc $content, $header, $meta ), $header, $meta );
+      });
+      return $f;
    });
 
    my $got_content = "";
@@ -141,9 +145,11 @@ $s3->EXPECT_get_object(
       $on_chunk->( $header, uc $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      return Future->new->done(
-         Future->new->done( uc $content, $header, $meta ), $header, $meta,
-      );
+      my $f = $loop->new_future;
+      $loop->later( sub {
+         $f->done( Future->new->done( uc $content, $header, $meta ), $header, $meta );
+      });
+      return $f;
    });
 
    # Second result is correct
@@ -158,9 +164,11 @@ $s3->EXPECT_get_object(
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       my $meta = { Mtime => "2013-10-04T17:40:59Z" };
-      return Future->new->done(
-         Future->new->done( $content, $header, $meta ), $header, $meta,
-      );
+      my $f = $loop->new_future;
+      $loop->later( sub {
+         $f->done( Future->new->done( $content, $header, $meta ), $header, $meta );
+      });
+      return $f;
    });
 
    my $fh;

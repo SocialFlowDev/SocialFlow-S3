@@ -39,7 +39,9 @@ my $sfs3 = SocialFlow::S3->new(
       }
 
       # MD5sum and length in bytes
-      return Future->new->done( md5_hex( $put_content ), 21 );
+      my $f = $loop->new_future;
+      $loop->later( sub { $f->done( md5_hex( $put_content ), 21 ); });
+      return $f;
    });
 
    $s3->EXPECT_put_object(
@@ -48,7 +50,9 @@ my $sfs3 = SocialFlow::S3->new(
       my %args = @_;
       $put_md5sum = $args{value};
 
-      return Future->new->done( "ETAG", 32 );
+      my $f = $loop->new_future;
+      $loop->later( sub { $f->done( "ETAG", 32 ); });
+      return $f;
    });
 
    # Can't just pass an in-memory filehandle as IO::Async won't like it

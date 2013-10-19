@@ -79,7 +79,9 @@ $sfs3->EXPECT_fstat_type_size_mtime()->RETURN_WITH( sub {
          $content .= $part[0]->get;
       }
 
-      return Future->new->done( md5_hex( $content ), length $content );
+      my $f = $loop->new_future;
+      $loop->later( sub { $f->done( md5_hex( $content ), length $content ); });
+      return $f;
    }) for keys %CONTENT;
 
    $s3->EXPECT_put_object(
@@ -110,7 +112,9 @@ $sfs3->EXPECT_fstat_type_size_mtime()->RETURN_WITH( sub {
             [
                "Content-Length" => length( $content ),
             ] );
-         return Future->new->done( $header, { Mtime => $mtime } );
+         my $f = $loop->new_future;
+         $loop->later( sub { $f->done( $header, { Mtime => $mtime } ); });
+         return $f;
       });
    }
 
@@ -124,7 +128,9 @@ $sfs3->EXPECT_fstat_type_size_mtime()->RETURN_WITH( sub {
          $content .= $part[0]->get;
       }
 
-      return Future->new->done( md5_hex( $content ), length $content );
+      my $f = $loop->new_future;
+      $loop->later( sub { $f->done( md5_hex( $content ), length $content ); });
+      return $f;
    });
 
    $s3->EXPECT_put_object(

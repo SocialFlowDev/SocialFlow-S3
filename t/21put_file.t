@@ -43,7 +43,9 @@ $s3->EXPECT_put_object(
    }
 
    # MD5sum and length in bytes
-   return Future->new->done( md5_hex( $put_content ), 21 );
+   my $f = $loop->new_future;
+   $loop->later( sub { $f->done( md5_hex( $put_content ), 21 ); });
+   return $f;
 })->PERSIST;
 
 $s3->EXPECT_put_object(
@@ -52,7 +54,9 @@ $s3->EXPECT_put_object(
    my %args = @_;
    $put_md5sum = $args{value};
 
-   return Future->new->done( "ETAG", 32 );
+   my $f = $loop->new_future;
+   $loop->later( sub { $f->done( "ETAG", 32 ); });
+   return $f;
 })->PERSIST;
 
 # ->_put_file_from_fh

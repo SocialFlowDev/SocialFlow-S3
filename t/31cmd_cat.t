@@ -40,9 +40,11 @@ my $content = "The value of key-1";
          ] );
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
-      return Future->new->done(
-         Future->new->done( $content, $header, {} ), $header, {}
-      );
+      my $f = $loop->new_future;
+      $loop->later( sub {
+         $f->done( Future->new->done( $content, $header, {} ), $header, {} );
+      });
+      return $f;
    });
 
    open my $outh, ">", \(my $output = "");

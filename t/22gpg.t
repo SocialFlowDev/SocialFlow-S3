@@ -59,7 +59,9 @@ my $ciphertext_md5sum;
       }
 
       # MD5sum and length in bytes
-      return Future->new->done( "ABC", 21 );
+      my $f = $loop->new_future;
+      $loop->later( sub { $f->done( "ABC", 21 ); });
+      return $f;
    });
 
    $s3->EXPECT_put_object(
@@ -68,7 +70,9 @@ my $ciphertext_md5sum;
       my %args = @_;
       $ciphertext_md5sum = $args{value};
 
-      return Future->new->done( "ETAG", 32 );
+      my $f = $loop->new_future;
+      $loop->later( sub { $f->done( "ETAG", 32 ); });
+      return $f;
    });
 
    # Can't just pass an in-memory filehandle as IO::Async won't like it
@@ -78,9 +82,9 @@ my $ciphertext_md5sum;
 
    my $f = $sfs3->_put_file_from_fh( $rd, "secret", mtime => 1381105606 );
 
-   no_more_expectations_ok;
-
    $f->get;
+
+   no_more_expectations_ok;
 
    # Test that the PUT file does at least start with PGP file magic
    # 0x85 ## PGP old format, type 1 == encrypted message, 2 length octets
@@ -112,11 +116,15 @@ my $ciphertext_md5sum;
          ] );
       $on_chunk->( $header, $ciphertext_content );
       $on_chunk->( $header, undef );
-      return Future->new->done(
-         Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } ),
-         $header,
-         { %ciphertext_meta },
-      );
+      my $f = $loop->new_future;
+      $loop->later( sub {
+         $f->done(
+            Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } ),
+            $header,
+            { %ciphertext_meta },
+         );
+      });
+      return $f;
    });
 
    my $got_content = "";
@@ -124,9 +132,9 @@ my $ciphertext_md5sum;
       "secret", sub { $got_content .= $_[1] if defined $_[1] }
    );
 
-   no_more_expectations_ok;
-
    $f->get;
+
+   no_more_expectations_ok;
 
    is( $got_content, $plaintext_content, 'content of file' );
 }
