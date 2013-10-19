@@ -72,7 +72,7 @@ foreach my $k ( keys %CONTENT ) {
       $on_chunk->( $header, undef );
       my $meta = { Mtime => $MTIME };
       return $loop->new_future->done_later(
-         Future->new->done( $content, $header, $meta ), $header, $meta,
+         $loop->new_future->done_later( $content, $header, $meta ), $header, $meta,
       );
    })->PERSIST;
 }

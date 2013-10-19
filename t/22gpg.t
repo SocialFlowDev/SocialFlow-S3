@@ -113,7 +113,7 @@ my $ciphertext_md5sum;
       $on_chunk->( $header, $ciphertext_content );
       $on_chunk->( $header, undef );
       return $loop->new_future->done_later(
-         Future->new->done( $ciphertext_content, $header, { %ciphertext_meta } ),
+         $loop->new_future->done_later( $ciphertext_content, $header, { %ciphertext_meta } ),
          $header,
          { %ciphertext_meta },
       );

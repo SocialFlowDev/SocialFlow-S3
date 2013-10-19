@@ -41,7 +41,7 @@ my $content = "The value of key-1";
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       return $loop->new_future->done_later(
-         Future->new->done( $content, $header, {} ), $header, {},
+         $loop->new_future->done_later( $content, $header, {} ), $header, {},
       );
    });
 
