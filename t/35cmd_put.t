@@ -18,7 +18,7 @@ my $sfs3 = SocialFlow::S3->new(
    bucket => "bucket-name/with-prefix",
    quiet  => 1,
 );
-IO::Async::Loop->new->add( $sfs3 );
+( my $loop = IO::Async::Loop->new )->add( $sfs3 );
 
 t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
    fopen_read fstat_type_size_mtime

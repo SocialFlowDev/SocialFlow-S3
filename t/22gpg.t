@@ -33,7 +33,7 @@ my $sfs3 = SocialFlow::S3->new(
 
    crypto_keyid => "F55ADE45",
 );
-IO::Async::Loop->new->add( $sfs3 );
+( my $loop = IO::Async::Loop->new )->add( $sfs3 );
 
 my $plaintext_content = "A secret value we want encrypted";
 
