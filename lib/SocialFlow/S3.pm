@@ -55,6 +55,8 @@ sub _init
    $args->{get_retries}   //= 3;
 
    $self->{status_lines} = 0;
+   $self->{prompt_lines} = 0;
+   $self->{prompt}       = "";
 
    $self->SUPER::_init( $args );
 }
@@ -104,10 +106,11 @@ sub print_message
    return if $self->{quiet};
 
    # Clear an old status message
-   print STDERR "\e\x4D\e[K" for 1 .. $self->{status_lines};
+   print STDERR "\e\x4D\e[K" for 1 .. $self->{status_lines} + $self->{prompt_lines};
    $self->{status_lines} = 0;
 
    print STDERR "$msg\n";
+   print STDERR $self->{prompt};
 }
 
 sub print_status
@@ -120,6 +123,31 @@ sub print_status
    $self->print_message( $status );
 
    $self->{status_lines} = () = split m/\n/, $status, -1;
+}
+
+sub print_prompt
+{
+   my $self = shift;
+   my ( $prompt ) = @_;
+
+   $prompt .= "\n" unless $prompt =~ m/\n\Z/;
+
+   # Clear an old prompt
+   print STDERR "\e\x4D\e[K" for 1 .. $self->{prompt_lines};
+
+   print STDERR $prompt;
+   $self->{prompt_lines} = ( () = split m/\n/, $prompt, -1 ) - 1;
+   $self->{prompt} = $prompt;
+}
+
+sub clear_prompt
+{
+   my $self = shift;
+
+   print STDERR "\e\x4D\e[K" for 1 .. $self->{prompt_lines};
+
+   $self->{prompt_lines} = 0;
+   $self->{prompt}       = "";
 }
 
 sub _fname_glob_to_re
@@ -728,9 +756,6 @@ sub prompt_and_readline
    my ( $prompt ) = @_;
 
    my $value_f = $self->loop->new_future;
-   # TODO: Purely cosmetic but we'll have to pause the status
-   # display while we wait
-   print STDERR $prompt; # should already be linefeed-terminated
 
    my $stdin = $self->{stdin} ||= do {
       my $stdin = IO::Async::Stream->new_for_stdin( on_read => sub { 0 } );
@@ -740,11 +765,14 @@ sub prompt_and_readline
    };
    my $termios = $self->{stdin_termios};
 
+   $self->print_prompt( $prompt );
    my $wasecho = $termios->getflag_echo;
    $termios->setflag_echo( 0 );
 
-   $stdin->read_until( qr/\r?\n/ )
-      ->on_done( sub { $termios->setflag_echo( $wasecho ) });
+   $stdin->read_until( qr/\r?\n/ )->on_done( sub {
+      $termios->setflag_echo( $wasecho );
+      $self->clear_prompt;
+   });
 }
 
 my $gpg_agent_sock_path = ".sfs3-fake-gpg-agent.sock"; # TODO: tmpdir? cleanup?
