@@ -547,7 +547,7 @@ sub _put_file_from_fh
 
       # pipe the data through 'gpg --encrypt --recipient $keyid' -
       my $gpg_process = IO::Async::Process->new(
-         command => [ "gpg", "--encrypt", "--recipient", $keyid, "--no-tty", "-" ],
+         command => [ "gpg", "--encrypt", "--recipient", $keyid, "--batch", "-" ],
          stdin  => { via => "pipe_write" },
          stdout => { via => "pipe_read" },
          on_finish => sub {
