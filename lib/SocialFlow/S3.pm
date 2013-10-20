@@ -424,8 +424,9 @@ sub delete_meta
       my $f = shift;
 
       if( $f->failure ) {
-         my ( $failure, $request, $response ) = $f->failure;
-         return Future->new->done if $response and $response->code == 404;
+         my ( $message, $name, $response ) = $f->failure;
+         return Future->new->done if $name and $name eq "http" and
+                                     $response and $response->code == 404;
          return $f;
       }
 
@@ -433,6 +434,20 @@ sub delete_meta
          key => "meta/$path/$metaname",
       )
    });
+}
+
+# Make an 'or_else' sub that ignores http 404 responses
+sub _gen_ignore_404
+{
+   my ( $return_on_404 ) = @_;
+
+   sub {
+      my $f = shift;
+      my ( $message, $name, $response ) = @_;
+      return Future->new->done( $return_on_404 ) if $name and $name eq "http" and
+                                                    $response and $response->code == 404;
+      return $f;
+   };
 }
 
 sub test_skip
@@ -465,11 +480,7 @@ sub test_skip
                $header->content_length == $size && strptime_iso8601( $meta->{Mtime} ) == $mtime,
                $s3md5,
             );
-         })->or_else( sub {
-            my ( $error, $request, $response ) = $_[0]->failure;
-            return Future->new->done( 0 ) if $response && $response->code == 404;
-            return $_[0];
-         });
+         })->or_else( _gen_ignore_404( 0 ) );
       }
       when( "md5sum" ) {
          $f = $self->test_skip( "stat", $s3path, $localpath )->then( sub {
@@ -495,13 +506,7 @@ sub test_skip
             $localmd5_f->then( sub {
                my ( $localmd5 ) = @_;
                return Future->new->done( $localmd5 eq $s3md5 );
-            })->or_else( sub {
-               my $f = shift;
-               my ( $failure, $request, $response ) = $f->failure;
-               # Missind md5sum == don't skip; anything else == error
-               return Future->new->done( 0 ) if $response && $response->code == 404;
-               return $_[0];
-            });
+            })->or_else( _gen_ignore_404( 0 ) );
          });
       }
       default {
@@ -519,11 +524,7 @@ sub stat_file
 
    $self->{s3}->head_object(
       key => "data/$s3path",
-   )->or_else( sub {
-      my $f = shift;
-      return Future->new->done( undef) if ( $f->failure )[2]->code == 404;
-      return $f; # propagate other errors
-   });
+   )->or_else( _gen_ignore_404( undef ) );
 }
 
 sub _put_file_from_fh
@@ -762,10 +763,9 @@ sub _get_file_to_code
                ],
                on_finish => sub {
                   my ( undef, $exitcode ) = @_;
-                  $gpg_future->done;
-                  $exitcode == 0 and return;
+                  $exitcode == 0 and return $gpg_future->done;
 
-                  die "gpg exited non-zero $exitcode\n";
+                  $gpg_future->fail( "GPG exited non-zero $exitcode", gpg => $exitcode );
                },
             );
             $self->add_child( $gpg_process );
@@ -866,8 +866,9 @@ sub get_file
       });
    } while => sub {
       my $f = shift;
-      my ( $failure, $request, $response ) = $f->failure or return 0; # success
-      return 0 if $response and $response->code =~ m/^4/; # don't retry HTTP 4xx
+      my ( $failure, $name, $response ) = $f->failure or return 0; # success
+      return 0 if $name and $name eq "http" and
+                  $response and $response->code =~ m/^4/; # don't retry HTTP 4xx
       return --$retries;
    })->then( sub {
       my ( $header, $meta ) = @_;

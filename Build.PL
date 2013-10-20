@@ -13,8 +13,8 @@ my $build = Module::Build->new(
       'IO::Async::Notifier' => 0,
       'IO::Async::Loop' => 0,
       'IO::Async::Timer::Periodic' => 0,
-      'Net::Async::HTTP' => '0.22',
-      'Net::Async::Webservice::S3' => '0.14', # ->head_then_get_object
+      'Net::Async::HTTP' => '0.30', # NaWS:S3 needs 0.30
+      'Net::Async::Webservice::S3' => '0.15', # neatened ->fail results
       'POSIX::strptime' => 0,
       'YAML' => 0,
    },
