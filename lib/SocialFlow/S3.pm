@@ -747,6 +747,11 @@ sub prompt_and_readline
       ->on_done( sub { $termios->setflag_echo( $wasecho ) });
 }
 
+my $gpg_agent_sock_path = ".sfs3-fake-gpg-agent.sock"; # TODO: tmpdir? cleanup?
+END {
+   unlink $gpg_agent_sock_path if -e $gpg_agent_sock_path;
+}
+
 sub start_gpg_agent
 {
    my $self = shift;
@@ -782,14 +787,12 @@ sub start_gpg_agent
    );
    $self->add_child( $listener );
 
-   my $path = ".sfs3-fake-gpg-agent.sock"; # TODO: tmpdir? cleanup?
-
    # GPG agent socket path has to be absolute or gpg won't accept it
-   $ENV{GPG_AGENT_INFO} = join ":", abs_path( $path ), $$, 1;
+   $ENV{GPG_AGENT_INFO} = join ":", abs_path( $gpg_agent_sock_path ), $$, 1;
 
-   unlink $path if -e $path;
+   unlink $gpg_agent_sock_path if -e $gpg_agent_sock_path;
    $listener->listen(
-      addr => { family => "unix", socktype => "stream", path => $path },
+      addr => { family => "unix", socktype => "stream", path => $gpg_agent_sock_path },
    )->get; # this should be synchronous
 
    $self->{gpg_agent_running}++;
