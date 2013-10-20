@@ -8,20 +8,25 @@ no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
 use Future;
 use Future::Utils qw( try_repeat fmap1 fmap_void );
+use IO::Async::Listener;
 use IO::Async::Process;
 use IO::Async::Stream;
 use IO::Async::Timer::Periodic;
 use Net::Async::Webservice::S3 0.14; # ->head_then_get_object
 
+use Cwd qw( abs_path );
 use Digest::MD5;
 use File::Basename qw( dirname );
 use File::Path qw( make_path );
+use IO::Termios;
 use List::Util qw( max );
 use POSIX qw( ceil strftime );
 use POSIX::strptime qw( strptime );
 use Scalar::Util qw( blessed );
 use Time::HiRes qw( time );
 use Time::Local qw( timegm );
+
+use SocialFlow::S3::GpgAgentStream;
 
 use constant PART_SIZE => 100*1024*1024; # 100 MiB
 
@@ -712,6 +717,84 @@ sub put_file
    );
 }
 
+# We have to act like a gpg-agent enough to ask passphrases from the user.
+# We'll be starting multiple gpg processes and we can't let them all talk to
+# the terminal, so we'll proxy inbetween to ensure we only ask for each
+# passphrase once.
+
+sub prompt_and_readline
+{
+   my $self = shift;
+   my ( $prompt ) = @_;
+
+   my $value_f = $self->loop->new_future;
+   # TODO: Purely cosmetic but we'll have to pause the status
+   # display while we wait
+   print STDERR $prompt; # should already be linefeed-terminated
+
+   my $stdin = $self->{stdin} ||= do {
+      my $stdin = IO::Async::Stream->new_for_stdin( on_read => sub { 0 } );
+      $self->add_child( $stdin );
+      $self->{stdin_termios} = IO::Termios->new( \*STDIN );
+      $stdin;
+   };
+   my $termios = $self->{stdin_termios};
+
+   my $wasecho = $termios->getflag_echo;
+   $termios->setflag_echo( 0 );
+
+   $stdin->read_until( qr/\r?\n/ )
+      ->on_done( sub { $termios->setflag_echo( $wasecho ) });
+}
+
+sub start_gpg_agent
+{
+   my $self = shift;
+
+   return if $self->{gpg_agent_running};
+
+   # A cache of futures giving the actual passphrases
+   my %passphrases;
+
+   my $listener = IO::Async::Listener->new(
+      handle_class => "SocialFlow::S3::GpgAgentStream",
+      on_accept => sub {
+         my ( $listener, $stream ) = @_;
+         $listener->add_child( $stream );
+         $stream->write( "OK Pleased to meet you\n" );
+         $stream->configure(
+            on_get_passphrase => sub {
+               my ( $stream, $cache_id, $errmsg, $prompt, $desc ) = @_;
+
+               my $value_f = $passphrases{$cache_id} ||=
+                  $self->prompt_and_readline( $desc )->transform(
+                     # hex encode it for GPG
+                     done => sub { chomp $_[0]; unpack "H*", $_[0] }
+                  );
+
+               $value_f->on_done( sub {
+                  my ( $value ) = @_;
+                  $stream->write( "OK $value\n" );
+               });
+            }
+         );
+      },
+   );
+   $self->add_child( $listener );
+
+   my $path = ".sfs3-fake-gpg-agent.sock"; # TODO: tmpdir? cleanup?
+
+   # GPG agent socket path has to be absolute or gpg won't accept it
+   $ENV{GPG_AGENT_INFO} = join ":", abs_path( $path ), $$, 1;
+
+   unlink $path if -e $path;
+   $listener->listen(
+      addr => { family => "unix", socktype => "stream", path => $path },
+   )->get; # this should be synchronous
+
+   $self->{gpg_agent_running}++;
+}
+
 sub _get_file_to_code
 {
    my $self = shift;
@@ -747,8 +830,9 @@ sub _get_file_to_code
 
          if( defined $meta->{Keyid} ) {
             my $gpg_future = $self->loop->new_future;
+            $self->start_gpg_agent;
             my $gpg_process = IO::Async::Process->new(
-               command => [ "gpg", "--decrypt", "-" ],
+               command => [ "gpg", "--decrypt", "--batch", "--use-agent", "-" ],
                stdin  => { via => "pipe_write" },
                stdout => {
                   on_read => sub {
