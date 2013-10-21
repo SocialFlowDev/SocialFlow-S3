@@ -1,6 +1,6 @@
 # vim:ft=yaml
 #
-# Rename this file to sfs3.conf
+# Rename this file to $HOME/.sfs3.conf
 #
 bucket: 'name-of-the-bucket/and-optional-subpath'
 access_key: 'Twenty char key here'

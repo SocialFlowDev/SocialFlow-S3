@@ -16,7 +16,7 @@ use YAML qw( LoadFile );
 Getopt::Long::Configure(qw(bundling pass_through ));
 
 GetOptions(
-   'C|config=s' => \(my $CONFIG_FILE = "etc/sfs3.conf"),
+   'C|config=s' => \(my $CONFIG_FILE = "$ENV{HOME}/.sfs3.conf"),
    'q|quiet'    => \my $QUIET,
 ) or do_help(), exit 1;
 
