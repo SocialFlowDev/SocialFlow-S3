@@ -77,6 +77,49 @@ $s3->EXPECT_put_object(
    is( $put_md5sum, "157e3a08ddc87ae336292e4a363b715d\n", 'PUT meta md5' );
 }
 
+# ->_put_file_from_fh to create a new file
+{
+   ( %put_meta, $put_content, $put_md5sum ) = ();
+
+   $s3->EXPECT_put_object(
+      key => "data/key-new",
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      my $gen_parts = $args{gen_parts};
+      %put_meta = %{ $args{meta} };
+
+      while( my @part = $gen_parts->() ) {
+         # $part[0] should be a Future
+         $put_content .= $part[0]->get;
+      }
+
+      # MD5sum and length in bytes
+      return $loop->new_future->done_later( md5_hex( $put_content ), 21 );
+   });
+
+   $s3->EXPECT_put_object(
+      key => "meta/key-new/md5sum",
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      $put_md5sum = $args{value};
+
+      return $loop->new_future->done_later( "ETAG", 32 );
+   });
+
+   # Can't just pass an in-memory filehandle as IO::Async won't like it
+   pipe( my ( $rd, $wr ) ) or die "Cannot pipe() - $!";
+   $wr->print( "New content" );
+   $wr->close;
+
+   # 2013-10-25 18:47:09 UTC
+   my $f = $sfs3->_put_file_from_fh( $rd, "key-new", mtime => 1382726829 );
+
+   $f->get;
+
+   no_more_expectations_ok;
+
+   is( $put_content, "New content", 'PUT content for new key' );
+}
 
 # ->put_file
 {
