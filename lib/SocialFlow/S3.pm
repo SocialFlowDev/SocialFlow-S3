@@ -476,7 +476,7 @@ sub _gen_ignore_404
 
    sub {
       my $f = shift;
-      my ( $message, $name, $response ) = @_;
+      my ( $message, $name, $response ) = $f->failure;
       return Future->new->done( $return_on_404 ) if $name and $name eq "http" and
                                                     $response and $response->code == 404;
       return $f;

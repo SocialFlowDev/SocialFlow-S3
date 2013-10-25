@@ -26,6 +26,12 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
 
 # put local-file key-1
 {
+   $s3->EXPECT_head_object(
+      key => "data/key-1",
+   )->RETURN_WITH( sub {
+      $loop->new_future->fail_later( "HEAD 404 Not Found", http => HTTP::Response->new( 404 => "Not Found" ) );
+   });
+
    $sfs3->EXPECT_fopen_read(
       path => "local-file"
    )->RETURN_WITH( sub {
@@ -78,7 +84,7 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
    $wr->print( "A new value for key-1" );
    $wr->close;
 
-   $sfs3->cmd_put( "local-file", "key-1" );
+   $sfs3->cmd_put( "local-file", "key-1", no_overwrite => 1 );
 
    is( $put_meta{Mtime}, "2013-10-04T14:26:04Z", 'PUT metadata Mtime' );
    is( $put_content, "A new value for key-1", 'PUT content' );
