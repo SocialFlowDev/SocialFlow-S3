@@ -80,6 +80,15 @@ if( !defined &IO::Async::Future::done_later ) {
 
       return $self;
    };
+
+   *{"IO::Async::Future::fail_later"} = sub {
+      my $self = shift;
+      my @result = @_;
+
+      $self->loop->later( sub { $self->fail( @result ) });
+
+      return $self;
+   };
 }
 
 package t::Mocking::Expectation;
