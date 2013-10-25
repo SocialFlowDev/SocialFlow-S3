@@ -121,6 +121,49 @@ $s3->EXPECT_put_object(
    is( $put_content, "New content", 'PUT content for new key' );
 }
 
+# ->_put_file_from_fh with small enough part size to do multi-part
+{
+   # CHEATING
+   local $sfs3->{part_size} = 16;
+
+   my @put_parts;
+   $s3->EXPECT_put_object(
+      key => "data/key-split",
+   )->RETURN_WITH( sub {
+      my %args = @_;
+      my $gen_parts = $args{gen_parts};
+
+      while( my @part = $gen_parts->() ) {
+         # $part[0] should be a Future
+         push @put_parts, $part[0]->get;
+      }
+
+      my $content = join "", @put_parts;
+      return $loop->new_future->done_later( md5_hex( $content ), length $content );
+   });
+
+   $s3->EXPECT_put_object(
+      key => "meta/key-split/md5sum",
+   )->RETURN_WITH( sub {
+      return $loop->new_future->done_later( "ETAG", 32 );
+   });
+
+   # Can't just pass an in-memory filehandle as IO::Async won't like it
+   pipe( my ( $rd, $wr ) ) or die "Cannot pipe() - $!";
+   $wr->print( "X" x 20 );
+   $wr->close;
+
+   my $f = $sfs3->_put_file_from_fh( $rd, "key-split", mtime => 1382730146 );
+
+   $f->get;
+
+   no_more_expectations_ok;
+
+   is_deeply( \@put_parts,
+              [ "X" x 16, "X" x 4 ],
+              '@put_parts from PUT content with multipart split' );
+}
+
 # ->put_file
 {
    ( %put_meta, $put_content, $put_md5sum ) = ();
