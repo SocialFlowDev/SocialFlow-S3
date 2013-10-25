@@ -28,7 +28,7 @@ use Time::Local qw( timegm );
 
 use SocialFlow::S3::GpgAgentStream;
 
-use constant PART_SIZE => 100*1024*1024; # 100 MiB
+use constant DEFAULT_PART_SIZE => 100*1024*1024; # 100 MiB
 
 use constant FILES_AT_ONCE => 4;
 
@@ -53,6 +53,7 @@ sub _init
    $args->{timeout}       //= 10;
    $args->{stall_timeout} //= 30;
    $args->{get_retries}   //= 3;
+   $args->{part_size}     //= DEFAULT_PART_SIZE;
 
    $self->{status_lines} = 0;
    $self->{prompt_lines} = 0;
@@ -71,7 +72,7 @@ sub configure
       $self->add_child( $self->{s3} = $s3 );
    }
 
-   foreach (qw( quiet get_retries )) {
+   foreach (qw( quiet get_retries part_size )) {
       $self->{$_} = delete $args{$_} if exists $args{$_};
    }
 
@@ -640,6 +641,8 @@ sub _put_file_from_fh
 
    stat( $fh ) or die "Cannot stat FH - $!";
 
+   my $part_size = $self->{part_size};
+
    my $gen_parts;
    if( -f _ ) {
       # Ignore the fh_stream here
@@ -652,7 +655,7 @@ sub _put_file_from_fh
 
          my $part_start = $read_pos;
          my $part_length = $len_total - $part_start;
-         $part_length = PART_SIZE if $part_length > PART_SIZE;
+         $part_length = $part_size if $part_length > $part_size;
 
          $read_pos += $part_length;
 
@@ -673,11 +676,11 @@ sub _put_file_from_fh
       my $eof;
       $gen_parts = sub {
          return if $eof;
-         my $f = $fh_stream->read_exactly( PART_SIZE )
+         my $f = $fh_stream->read_exactly( $part_size )
             ->on_done( sub {
                ( my $part, $eof ) = @_;
             });
-         return ( $f, PART_SIZE );
+         return ( $f, $part_size );
       };
    }
    else {
