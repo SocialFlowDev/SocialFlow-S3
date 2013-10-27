@@ -646,6 +646,7 @@ sub _put_file_from_fh
    my $gen_parts;
    if( -f _ ) {
       # Ignore the fh_stream here
+      $self->remove_child( $fh_stream ); undef $fh_stream;
 
       my $len_total = -s _;
       my $read_pos = 0;
