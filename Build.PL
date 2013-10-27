@@ -20,6 +20,10 @@ my $build = Module::Build->new(
       'POSIX::strptime' => 0,
       'YAML' => 0,
    },
+   build_requires => {
+      'File::Temp' => 0,
+      'Test::More' => '0.88', # done_testing
+   },
    auto_configure_requires => 0, # Don't add M::B to configure_requires
    create_makefile_pl => 'traditional',
    create_readme  => 1,

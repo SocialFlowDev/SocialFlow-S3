@@ -8,6 +8,7 @@ use Test::More;
 use SocialFlow::S3;
 use t::Mocking;
 use t::MockS3;
+use File::Temp qw( tempfile );
 use Digest::MD5 qw( md5_hex );
 use HTTP::Response;
 
@@ -37,9 +38,16 @@ $s3->EXPECT_put_object(
    my $gen_parts = $args{gen_parts};
    %put_meta = %{ $args{meta} };
 
+   my $pos = 0;
    while( my @part = $gen_parts->() ) {
-      # $part[0] should be a Future
-      $put_content .= $part[0]->get;
+      # $part[0] should be a Future or CODE
+      if( ref $part[0] eq "CODE" ) {
+         $put_content .= $part[0]->( $pos, $part[1] );
+         $pos = length $put_content;
+      }
+      else {
+         $put_content .= $part[0]->get;
+      }
    }
 
    # MD5sum and length in bytes
@@ -55,7 +63,30 @@ $s3->EXPECT_put_object(
    return $loop->new_future->done_later( "ETAG", 32 );
 })->PERSIST;
 
-# ->_put_file_from_fh
+# ->_put_file_from_fh (regular)
+{
+   ( %put_meta, $put_content, $put_md5sum ) = ();
+
+   # Can't just pass an in-memory filehandle as IO::Async won't like it
+   my $fh = tempfile();
+   $fh->print( $content );
+   $fh->autoflush(1);
+   $fh->seek( 0, 0 );
+
+   # 2013-10-04 14:26:04 UTC
+   my $f = $sfs3->_put_file_from_fh( $fh, "key-1", mtime => 1380896764 );
+
+   no_more_expectations_ok;
+
+   $f->get;
+
+   is( $put_meta{Mtime}, "2013-10-04T14:26:04Z", 'PUT metadata Mtime' );
+   is( $put_content, "A new value for key-1", 'PUT content' );
+
+   is( $put_md5sum, "157e3a08ddc87ae336292e4a363b715d\n", 'PUT meta md5' );
+}
+
+# ->_put_file_from_fh (pipe)
 {
    ( %put_meta, $put_content, $put_md5sum ) = ();
 
