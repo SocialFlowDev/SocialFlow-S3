@@ -59,4 +59,22 @@ EOF
    like( $value, qr/^A temporary file to unit-test SocialFlow::S3 /, 'received file content from get' );
 }
 
+# rm
+{
+   $sfs3->cmd_rm( "test-key" );
+
+   pass( "->cmd_rm OK" );
+
+   # Expecting a 404 here
+   my $f = $s3->head_object( key => "data/test-key" );
+   $f->await;
+   if( my ( undef, $name, $resp ) = $f->failure ) {
+      is( $name, "http", '->head_object after rm fails at http' );
+      is( $resp->code, 404, '->head_object failed with 404' );
+   }
+   else {
+      fail( "Expected ->cmd_rm to fail but it didn't" );
+   }
+}
+
 done_testing;
