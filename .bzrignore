@@ -16,3 +16,4 @@ src
 include
 etc
 t/gnupg/random_seed
+t/.sfs3.conf

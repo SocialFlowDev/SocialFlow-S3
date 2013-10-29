@@ -8,3 +8,4 @@
 /Makefile.PL
 /blib/
 /t/gnupg/random_seed
+/t/.sfs3.conf
