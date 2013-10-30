@@ -34,7 +34,7 @@ $s3->head_object( key => "data/test-key" )
 
 # put
 {
-   my ( $fh, $filename ) = tempfile();
+   my ( $fh, $filename ) = tempfile( UNLINK => 1 );
    $fh->print( <<"EOF" );
 A temporary file to unit-test SocialFlow::S3 created by $0
 EOF
@@ -61,7 +61,7 @@ EOF
 
 # get
 {
-   my ( $fh, $filename ) = tempfile();
+   my ( $fh, $filename ) = tempfile( UNLINK => 1 );
 
    $sfs3->cmd_get( "test-key", $filename );
 
