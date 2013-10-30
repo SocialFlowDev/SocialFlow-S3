@@ -84,7 +84,8 @@ sub configure
    }
 
    if( my $bucket = delete $args{bucket} ) {
-      ( $bucket, my $prefix ) = split m{/}, $bucket, 2;
+      ( $bucket, my $prefix ) = split m(/), $bucket, 2;
+      $prefix .= "/" unless $prefix =~ m(/$);
       $self->{s3}->configure(
          bucket => $bucket,
          prefix => $prefix,

@@ -23,7 +23,7 @@ is_deeply( \%http_config,
 
 is_deeply( \%s3_config,
            { bucket        => "bucket-name",
-             prefix        => "with-prefix",
+             prefix        => "with-prefix/",
              stall_timeout => 30,
              timeout       => 10, },
            'NaWS:S3 config' );
