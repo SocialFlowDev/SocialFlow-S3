@@ -6,6 +6,7 @@ use Exporter 'import';
 
 our @EXPORT = qw(
    no_more_expectations_ok
+   MATCHES
 );
 
 # A micro expectation-based mocking system
@@ -13,6 +14,12 @@ our @EXPORT = qw(
 my @expectations; # [] = [$package, $method, \%args, $flags, return]
 
 use constant FLAG_PERSIST => 0x01;
+
+sub MATCHES
+{
+   my ( $predicate ) = @_;
+   return bless \$predicate, "t::Mocking::Matcher";
+}
 
 sub mock_methods
 {
@@ -48,11 +55,18 @@ sub mock_methods_into
             $e->[0] eq $pkg or next EXPECT;
             $e->[1] eq $method or next EXPECT;
             my $args = $e->[2];
-            $args->{$_} eq $args{$_} or next EXPECT for keys %$args;
+            foreach ( keys %$args ) {
+               my $matcher = $args->{$_};
+               my $val     = $args{$_};
+               if( ref $matcher eq "t::Mocking::Matcher" ) {
+                  $matcher->matches( $val ) or next EXPECT;
+               }
+               else {
+                  $matcher eq $val or next EXPECT
+               }
+            }
 
             @expectations = grep { $_ != $e } @expectations unless $e->[3] & FLAG_PERSIST;
-
-            delete @args{keys %$args};
 
             return $e->[4]->( %args );
          }
@@ -118,6 +132,26 @@ sub PERSIST
    my $e = shift;
    $e->[3] |= t::Mocking::FLAG_PERSIST;
    return $e;
+}
+
+package t::Mocking::Matcher;
+
+sub matches
+{
+   my $self = shift;
+   my ( $val ) = @_;
+   my $predicate = $$self;
+   my $t = ref $predicate;
+
+   if( $t eq "Regexp" ) {
+      return $val =~ $predicate;
+   }
+   elsif( $t eq "CODE" ) {
+      return $predicate->( $val );
+   }
+   else {
+      die "TODO: unknown predicate type $t\n";
+   }
 }
 
 1;
