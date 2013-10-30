@@ -47,7 +47,10 @@ my $content = "The value of key-1";
 
    open my $outh, ">", \(my $output = "");
 
-   $sfs3->cmd_cat( "key-1", stdout => $outh );
+   {
+      local *STDOUT = *$outh;
+      $sfs3->cmd_cat( "key-1" );
+   }
 
    is( $output, $content, 'output from cmd_cat' );
 

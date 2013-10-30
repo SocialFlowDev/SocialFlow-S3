@@ -56,7 +56,10 @@ my $sfs3 = SocialFlow::S3->new(
    $wr->print( "A new value for key-1" );
    $wr->close;
 
-   $sfs3->cmd_uncat( "key-1", stdin => $rd );
+   {
+      local *STDIN = *$rd;
+      $sfs3->cmd_uncat( "key-1" );
+   }
 
    # Avoid race condition in timing
    like( delete $put_meta{Mtime}, qr/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,

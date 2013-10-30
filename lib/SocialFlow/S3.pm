@@ -1094,8 +1094,6 @@ sub cmd_cat
    my $self = shift;
    my ( $s3path, %args ) = @_;
 
-   my $STDOUT = $args{stdout} || \*STDOUT;
-
    # Only do progress output if STDOUT is not a terminal
    my $do_progress = !-t \*STDOUT;
 
@@ -1113,7 +1111,7 @@ sub cmd_cat
             $len_so_far += length $data;
          }
 
-         print $STDOUT $data;
+         print STDOUT $data;
       },
    )->get;
 
@@ -1125,14 +1123,12 @@ sub cmd_uncat
    my $self = shift;
    my ( $s3path, %args ) = @_;
 
-   my $STDIN = $args{stdin} || \*STDIN;
-
    if( $args{no_overwrite} ) {
       defined $self->stat_file( $s3path )->get and
          die "Not overwriting S3 file $s3path (use the --force)\n";
    }
 
-   $self->_put_file_from_fh( $STDIN, $s3path,
+   $self->_put_file_from_fh( \*STDIN, $s3path,
       mtime => time,
       on_progress => sub {
          # TODO
