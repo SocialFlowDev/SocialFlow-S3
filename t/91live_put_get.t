@@ -51,6 +51,12 @@ EOF
 
    ( $resp ) = $s3->head_object( key => "meta/test-key/md5sum" )->get;
    is( $resp->code, 200, '$s3->head_object on md5sum metadata' );
+
+   # A second cmd_put should not fail
+
+   $sfs3->cmd_put( $filename, "test-key" );
+
+   pass( "->cmd_put OK a second time" );
 }
 
 # get
