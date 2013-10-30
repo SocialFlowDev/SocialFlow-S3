@@ -3,6 +3,9 @@
 use strict;
 use warnings;
 
+# Unit tests depend on local timezone; lets make it predictable
+BEGIN { $ENV{TZ} = "UTC" }
+
 use Test::More;
 
 use SocialFlow::S3;
@@ -77,9 +80,9 @@ EOF
    is( $output, <<'EOF',
 prefix-1                               DIR
 prefix-2                               DIR
-key-1                                              123 2013-10-04 00:24:10
-key-2                                              135 2013-10-04 00:24:12
-key-3                                              147 2013-10-04 00:24:14
+key-1                                              123 2013-10-03 23:24:10
+key-2                                              135 2013-10-03 23:24:12
+key-3                                              147 2013-10-03 23:24:14
 EOF
    'output from cmd_ls long no-recurse' );
 
