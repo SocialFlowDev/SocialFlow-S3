@@ -22,7 +22,7 @@ my $sfs3 = SocialFlow::S3->new(
 
 my $content = "The value of key-1";
 
-# cat key-1
+# get key-1 -
 {
    $s3->EXPECT_get_object(
       key => "meta/key-1/md5sum"
@@ -49,7 +49,7 @@ my $content = "The value of key-1";
 
    {
       local *STDOUT = *$outh;
-      $sfs3->cmd_cat( "key-1" );
+      $sfs3->cmd_get( "key-1", "-" );
    }
 
    is( $output, $content, 'output from cmd_cat' );

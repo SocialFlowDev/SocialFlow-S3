@@ -1089,78 +1089,51 @@ sub cmd_ls
    }
 }
 
-sub cmd_cat
-{
-   my $self = shift;
-   my ( $s3path, %args ) = @_;
-
-   # Only do progress output if STDOUT is not a terminal
-   my $do_progress = !-t \*STDOUT;
-
-   my $len_so_far = 0;
-   my $progress_timer;
-
-   $self->_get_file_to_code(
-      $s3path,
-      sub {
-         my ( $header, $data ) = @_;
-         return unless defined $data;
-
-         if( $do_progress ) {
-            $progress_timer ||= $self->_start_progress_one( $header->content_length, \$len_so_far );
-            $len_so_far += length $data;
-         }
-
-         print STDOUT $data;
-      },
-   )->get;
-
-   $self->print_message( "Successfully got $s3path to <stdout>" ) if $do_progress;
-}
-
-sub cmd_uncat
-{
-   my $self = shift;
-   my ( $s3path, %args ) = @_;
-
-   if( $args{no_overwrite} ) {
-      defined $self->stat_file( $s3path )->get and
-         die "Not overwriting S3 file $s3path (use the --force)\n";
-   }
-
-   $self->_put_file_from_fh( \*STDIN, $s3path,
-      mtime => time,
-      on_progress => sub {
-         # TODO
-      },
-      %args,
-   )->get;
-}
-
 sub cmd_get
 {
    my $self = shift;
    my ( $s3path, $localpath, %args ) = @_;
 
-   my $len_so_far;
+   my $len_so_far = 0;
    my $progress_timer;
 
-   if( $args{no_overwrite} ) {
-      stat( $localpath ) and
-         die "Not overwriting local file $localpath (use the --force)\n";
-   }
+   if( $localpath eq "-" ) {
+      # Only do progress output if STDOUT is not a terminal
+      my $do_progress = !-t \*STDOUT;
 
-   $self->get_file(
-      $s3path, $localpath,
-      on_progress => sub {
-         $len_so_far = $_[0];
-         $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
-      },
-   )->get;
+      $self->_get_file_to_code(
+         $s3path,
+         sub {
+            my ( $header, $data ) = @_;
+            return unless defined $data;
+
+            if( $do_progress ) {
+               $progress_timer ||= $self->_start_progress_one( $header->content_length, \$len_so_far );
+               $len_so_far += length $data;
+            }
+
+            print STDOUT $data;
+         },
+      )->get;
+   }
+   else {
+      if( $args{no_overwrite} ) {
+         stat( $localpath ) and
+            die "Not overwriting local file $localpath (use the --force)\n";
+      }
+
+      $self->get_file(
+         $s3path, $localpath,
+         on_progress => sub {
+            $len_so_far = $_[0];
+            $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
+         },
+      )->get;
+   }
 
    $self->print_message( "Successfully got $s3path to $localpath" );
 
-   $self->remove_child( $progress_timer );
+   $self->remove_child( $progress_timer ) if $progress_timer;
 }
 
 sub cmd_put
@@ -1176,17 +1149,28 @@ sub cmd_put
          die "Not overwriting S3 file $s3path (use the --force)\n";
    }
 
-   $self->put_file(
-      $localpath, $s3path,
-      on_progress => sub {
-         $len_so_far = $_[0];
-         $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
-      },
-   )->get;
+   if( $localpath eq "-" ) {
+      $self->_put_file_from_fh( \*STDIN, $s3path,
+         mtime => time,
+         on_progress => sub {
+            # TODO
+         },
+         %args,
+      )->get;
+   }
+   else {
+      $self->put_file(
+         $localpath, $s3path,
+         on_progress => sub {
+            $len_so_far = $_[0];
+            $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
+         },
+      )->get;
+   }
 
    $self->print_message( "Successfully put $localpath to $s3path" );
 
-   $self->remove_child( $progress_timer );
+   $self->remove_child( $progress_timer ) if $progress_timer;
 }
 
 sub cmd_rm

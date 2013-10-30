@@ -63,8 +63,6 @@ Usage: sfs3 COMMAND [--config=file] [OPTIONS...]
 
 Commands:
    ls [--long] [--recursive] S3PATH
-   cat S3FILE
-   uncat [--force] S3FILE
    get [--force] S3FILE [LOCALFILE]
    put LOCALFILE [S3FILE]
    rm S3PATTERN
@@ -75,6 +73,8 @@ Commands:
 
    pull S3ROOT LOCALROOT
      [--concurrent=N] [--all] [--md5sum] [--only=PATTERN]* [--exclude=PATTERN]*
+
+LOCALFILE may be "-" to get to stdout / put from stdin
 
 Patterns:
   May contain wildcards
@@ -106,19 +106,10 @@ given( shift @ARGV ) {
       s3()->cmd_ls( $s3path, long => $LONG, recurse => $RECURSE );
    }
    when( "cat" ) {
-      GetOptions(
-      ) or exit 1;
-      my $s3path = shift @ARGV;
-
-      s3()->cmd_cat( $s3path );
+      die "'cat' no longer supported; use 'get' with a local path of '-'\n";
    }
    when( "uncat" ) {
-      GetOptions(
-         'f|force' => \my $FORCE,
-      ) or exit 1;
-      my $s3path = shift @ARGV;
-
-      s3()->cmd_uncat( $s3path, no_overwrite => !$FORCE );
+      die "'uncat' no longer supported; use 'put' with a local path of '-'\n";
    }
    when( "get" ) {
       GetOptions(

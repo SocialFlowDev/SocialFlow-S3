@@ -20,7 +20,7 @@ my $sfs3 = SocialFlow::S3->new(
 );
 ( my $loop = IO::Async::Loop->new )->add( $sfs3 );
 
-# uncat key-1
+# put - key-1
 {
    my %put_meta;
    my $put_content = "";
@@ -58,7 +58,7 @@ my $sfs3 = SocialFlow::S3->new(
 
    {
       local *STDIN = *$rd;
-      $sfs3->cmd_uncat( "key-1" );
+      $sfs3->cmd_put( "-", "key-1" );
    }
 
    # Avoid race condition in timing
