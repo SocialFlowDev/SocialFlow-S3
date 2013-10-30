@@ -56,6 +56,8 @@ sub mock_methods_into
             $e->[1] eq $method or next EXPECT;
             my $args = $e->[2];
             foreach ( keys %$args ) {
+               exists $args{$_} or next EXPECT;
+
                my $matcher = $args->{$_};
                my $val     = $args{$_};
                if( ref $matcher eq "t::Mocking::Matcher" ) {
