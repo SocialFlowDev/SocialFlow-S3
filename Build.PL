@@ -7,7 +7,6 @@ my $build = Module::Build->new(
    module_name => 'SocialFlow::S3',
    dist_abstract => 'Amazon S3 tool for Socialflow',
    requires => {
-      'Crypt::Rijndael' => 0,
       'Cwd' => 0,
       'Future' => 0,
       'Future::Utils' => '0.18', # Bugfix to fmap* functions
