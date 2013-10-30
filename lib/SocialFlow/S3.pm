@@ -1203,11 +1203,12 @@ sub cmd_rm
      @s3paths = @keys;
    }
 
-   # TODO: Future concurrently
-   foreach my $s3path ( @s3paths ) {
-      $self->delete_file( $s3path )->get;
-      print "Removed $s3path\n" unless $self->{quiet};
-   }
+   ( fmap_void {
+      my $s3path = shift;
+      $self->delete_file( $s3path )
+         ->on_done( sub { print "Removed $s3path\n" unless $self->{quiet} } );
+    } concurrent => 4,
+      foreach => \@s3paths )->get;
 }
 
 sub cmd_push
