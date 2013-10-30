@@ -72,4 +72,37 @@ my $sfs3 = SocialFlow::S3->new(
    no_more_expectations_ok;
 }
 
+# S3 path canonicalisation
+{
+   foreach my $path ( "key", "/key" ) {
+      $s3->EXPECT_put_object(
+         key => "data/key",
+      )->RETURN_WITH( sub {
+         my %args = @_;
+         my $gen_parts = $args{gen_parts};
+         my $content = "";
+         while( my @part = $gen_parts->() ) {
+            # $part[0] should be a Future
+            $content .= $part[0]->get;
+         }
+
+         # MD5sum and length in bytes
+         return Future->new->done( md5_hex( $content ), length $content );
+      });
+
+      $s3->EXPECT_put_object(
+         key => "meta/key/md5sum",
+      )->RETURN_F( "ETAG", 32 );
+
+      pipe( my ( $rd, $wr ) ) or die "Cannot pipe() - $!";
+      $wr->print( "Hello" );
+      $wr->close;
+
+      local *STDIN = *$rd;
+      $sfs3->cmd_put( "-", $path );
+
+      no_more_expectations_ok;
+   }
+}
+
 done_testing;

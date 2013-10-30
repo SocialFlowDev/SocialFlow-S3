@@ -35,9 +35,7 @@ my $content = "The value of key-1";
    )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};
-      my $header = HTTP::Response->new( 200, "OK",
-         [
-         ] );
+      my $header = HTTP::Response->new( 200, "OK", [] );
       $on_chunk->( $header, $content );
       $on_chunk->( $header, undef );
       return $loop->new_future->done_later(
@@ -55,6 +53,36 @@ my $content = "The value of key-1";
    is( $output, $content, 'output from cmd_cat' );
 
    no_more_expectations_ok;
+}
+
+# S3 path canonicalisation
+{
+   foreach my $path ( "key", "/key" ) {
+      $s3->EXPECT_head_then_get_object(
+         key => "data/key",
+      )->RETURN_WITH( sub {
+         my %args = @_;
+         my $on_chunk = $args{on_chunk};
+         my $header = HTTP::Response->new( 200, "OK", [] );
+         $on_chunk->( $header, "Hello" );
+         $on_chunk->( $header, undef );
+         return Future->new->done(
+            Future->new->done( $content, $header, {} ), $header, {}
+         );
+      });
+      $s3->EXPECT_get_object(
+         key => "meta/key/md5sum",
+      )->RETURN_F(
+         md5_hex( "Hello" )
+      );
+
+      open my $outh, ">", \(my $output = "");
+      local *STDOUT = *$outh;
+
+      $sfs3->cmd_get( $path, "-" );
+
+      no_more_expectations_ok;
+   }
 }
 
 done_testing;

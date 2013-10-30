@@ -151,6 +151,15 @@ sub clear_prompt
    $self->{prompt}       = "";
 }
 
+# Join filepaths by ensuring exactly one '/' between each component
+sub _joinpath
+{
+   my @str = @_;
+   $_ =~ s(^/)() for @str[1..$#str];
+   $_ =~ s(/$)() for @str[0..$#str-1];
+   return join "/", @str;
+}
+
 sub _fname_glob_to_re
 {
    my ( $glob ) = @_;
@@ -201,7 +210,7 @@ sub _expand_pattern
    return ( $prefix ) if !$re;
 
    my ( $keys ) = $self->{s3}->list_bucket(
-      prefix => "data/$prefix",
+      prefix => _joinpath( "data", $prefix ),
       delimiter => "/",
    )->get;
 
@@ -427,7 +436,7 @@ sub put_meta
    my ( $path, $metaname, $value ) = @_;
 
    $self->{s3}->put_object(
-      key => "meta/$path/$metaname",
+      key => _joinpath( "meta", $path, $metaname ),
       value => $value,
       timeout => $self->{timeout},
    );
@@ -439,7 +448,7 @@ sub get_meta
    my ( $path, $metaname ) = @_;
 
    $self->{s3}->get_object(
-      key => "meta/$path/$metaname",
+      key => _joinpath( "meta", $path, $metaname ),
       timeout => $self->{timeout},
    );
 }
@@ -452,7 +461,7 @@ sub delete_meta
    my ( $path, $metaname ) = @_;
 
    $self->{s3}->get_object(
-      key => "meta/$path/$metaname",
+      key => _joinpath( "meta", $path, $metaname ),
       timeout => $self->{timeout},
    )->followed_by( sub {
       my $f = shift;
@@ -465,7 +474,7 @@ sub delete_meta
       }
 
       $self->{s3}->delete_object(
-         key => "meta/$path/$metaname",
+         key => _joinpath( "meta", $path, $metaname ),
       )
    });
 }
@@ -503,7 +512,7 @@ sub test_skip
          # Fetch the md5sum meta anyway even if we aren't going to use it, because if
          # it's missing we definitely want to re-upload
          $f = Future->needs_all(
-            $self->{s3}->head_object( key => "data/$s3path" ),
+            $self->{s3}->head_object( key => _joinpath( "data", $s3path ) ),
             $self->get_meta( $s3path, "md5sum" )->transform( done => sub { chomp $_[0]; $_[0] } ),
          )->then( sub {
             my ( $header, $meta, $s3md5 ) = @_;
@@ -557,7 +566,7 @@ sub stat_file
    my ( $s3path ) = @_;
 
    $self->{s3}->head_object(
-      key => "data/$s3path",
+      key => _joinpath( "data", $s3path ),
    )->or_else( _gen_ignore_404( undef ) );
 }
 
@@ -692,7 +701,7 @@ sub _put_file_from_fh
 
    my $part_offset = 0;
    my $f = $self->{s3}->put_object(
-      key       => "data/$s3path",
+      key       => _joinpath( "data", $s3path ),
       meta      => \%meta,
       gen_parts => sub {
          my ( $part, $part_len ) = $gen_parts->() or return;
@@ -850,7 +859,7 @@ sub _get_file_to_code
          ->transform( done => sub { chomp $_[0]; $_[0] } ),
 
       $self->{s3}->head_then_get_object(
-         key      => "data/$s3path",
+         key      => _joinpath( "data", $s3path ),
          on_chunk => sub {
             my ( $header, $data ) = @_;
             if( $on_more ) {
@@ -1010,10 +1019,10 @@ sub delete_file
 
    Future->needs_all(
       $self->{s3}->delete_object(
-         key    => "data/$s3path",
+         key    => _joinpath( "data", $s3path ),
       ),
       $self->{s3}->list_bucket(
-         prefix => "meta/$s3path/",
+         prefix => _joinpath( "meta", $s3path, "/" ),
          delimiter => "/",
       )->then( sub {
          my ( $keys, $prefixes ) = @_;
@@ -1038,7 +1047,7 @@ sub cmd_ls
    my ( $prefix, $re ) = $self->_split_pattern( $s3pattern // "", 1 );
 
    my ( $keys, $prefixes ) = $self->{s3}->list_bucket(
-      prefix => "data/$prefix",
+      prefix => _joinpath( "data", $prefix ),
       delimiter => ( $RECURSE ? "" : "/" ),
    )->get;
 
@@ -1189,7 +1198,7 @@ sub cmd_rm
       ( fmap_void {
          my $s3path = shift;
          $self->{s3}->list_bucket(
-            prefix => "data/$s3path/",
+            prefix => _joinpath( "data", $s3path, "/" ),
             delimiter => "",
          )->on_done( sub {
             my ( $keys ) = @_;
@@ -1229,7 +1238,7 @@ sub cmd_push
    while( @stack ) {
       my $relpath = shift @stack;
 
-      my $localpath = join "/", grep { defined } $localroot, $relpath;
+      my $localpath = _joinpath( grep { defined } $localroot, $relpath );
 
       $self->print_message( "Scanning $localpath..." );
 
@@ -1237,7 +1246,7 @@ sub cmd_push
       foreach ( sort $self->freaddir( path => $localpath ) ) {
          next if $_ eq "." or $_ eq "..";
 
-         my $ent = join "/", grep { defined } $relpath, $_;
+         my $ent = _joinpath( grep { defined } $relpath, $_ );
 
          my ( $type, $size ) = $self->fstat_type_size_mtime( path => "$localroot/$ent" );
 
@@ -1270,9 +1279,9 @@ sub cmd_push
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
 
-      my $localpath = "$localroot/$relpath";
+      my $localpath = _joinpath( $localroot, $relpath );
       # Allow $s3root="" to mean upload into root
-      my $s3path    = join "/", grep { length } $s3root, $relpath;
+      my $s3path    = _joinpath( grep { length } $s3root, $relpath );
 
       push @uploads, my $slot = [ $s3path, $size, "test" ];
 
@@ -1321,13 +1330,18 @@ sub cmd_pull
    my $self = shift;
    my ( $s3root, $localroot, %args ) = @_;
 
+   # Trim trailing "/";
+   s{/$}{} for $s3root, $localroot;
+
    my $concurrent = $args{concurrent} || FILES_AT_ONCE;
    my $skip_logic = $args{skip_logic} || "stat";
    my $filter = _make_filter_sub( $args{only}, $args{exclude} );
 
+   my $s3root_data = _joinpath( "data", $s3root );
+
    $self->print_message( "Listing files on S3..." );
    my ( $keys ) = $self->{s3}->list_bucket(
-      prefix => "data/$s3root",
+      prefix => $s3root_data,
       # no delimiter
    )->get;
 
@@ -1336,9 +1350,9 @@ sub cmd_pull
    my @files;
 
    foreach ( @$keys ) {
-      # Trim "data/" prefix
-      my $name = substr $_->{key}, 5;
-      $name =~ s{^\Q$s3root\E/}{};
+      my $name = $_->{key};
+      # Trim "data/$s3root" prefix
+      $name =~ s{^\Q$s3root_data\E/}{};
 
       next unless $filter->( $name );
 
@@ -1362,8 +1376,8 @@ sub cmd_pull
       my ( $relpath, $size ) = @{$_[0]};
 
       # Allow $s3root="" to mean download from root
-      my $s3path    = join "/", grep { length } $s3root, $relpath;
-      my $localpath = "$localroot/$relpath";
+      my $s3path    = _joinpath( grep { length } $s3root, $relpath );
+      my $localpath = _joinpath( $localroot, $relpath );
 
       $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
          my ( $skip ) = @_;

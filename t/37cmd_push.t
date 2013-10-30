@@ -31,7 +31,9 @@ my %CONTENT = (
 );
 my $MTIME = "2013-10-07T23:24:25Z";
 
-$sfs3->EXPECT_freaddir()->RETURN_WITH( sub {
+$sfs3->EXPECT_freaddir(
+   path => MATCHES(qr(^tree)),
+)->RETURN_WITH( sub {
    my %args = @_;
    my $path = $args{path};
    my %ents;
@@ -62,6 +64,9 @@ $sfs3->EXPECT_fstat_type_size_mtime()->RETURN_WITH( sub {
    }
    elsif( grep { $_ =~ m(^\Q$path\E/) } keys %CONTENT ) {
       return "d", 0, 1381188265;
+   }
+   elsif( defined $path and $path eq "local/key" ) {
+      return "f", 5, 1383154075;
    }
 })->PERSIST;
 
@@ -136,6 +141,47 @@ $sfs3->EXPECT_fstat_type_size_mtime()->RETURN_WITH( sub {
    $sfs3->cmd_push( "tree", "tree", skip_logic => "stat" );
 
    no_more_expectations_ok;
+}
+
+# S3 path canonicalisation
+{
+   foreach my $path ( "root", "/root", "root/", "/root/" ) {
+      $sfs3->EXPECT_freaddir(
+         path => "local"
+      )->RETURN(qw( key ));
+
+      $sfs3->EXPECT_fopen_read(
+         path => "local/key",
+      )->RETURN_WITH( sub {
+         pipe( my ( $rd, $wr ) ) or die "Cannot pipe() - $!";
+         $wr->print( "Hello" );
+         $wr->close;
+
+         $FH_2_FILE{$rd} = "local/key";
+         return $rd;
+      });
+
+      $s3->EXPECT_put_object( key => "data/root/key" )->RETURN_WITH( sub {
+         my %args = @_;
+         my $gen_parts = $args{gen_parts};
+
+         my $content = "";
+         while( my @part = $gen_parts->() ) {
+            # $part[0] should be a Future
+            $content .= $part[0]->get;
+         }
+
+         return Future->new->done( md5_hex( $content ), length $content );
+      });
+
+      $s3->EXPECT_put_object( key => "meta/root/key/md5sum" )->RETURN_F(
+         "ETAG", 32
+      );
+
+      $sfs3->cmd_push( "local", $path, skip_logic => "all" );
+
+      no_more_expectations_ok;
+   }
 }
 
 done_testing;

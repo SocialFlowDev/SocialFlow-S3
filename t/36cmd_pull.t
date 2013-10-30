@@ -31,7 +31,9 @@ my %CONTENT = (
 );
 my $MTIME = "2013-10-07T23:24:25Z";
 
-$s3->EXPECT_list_bucket()->RETURN_WITH( sub {
+$s3->EXPECT_list_bucket(
+   prefix => MATCHES(qr(^data/tree)),
+)->RETURN_WITH( sub {
    my %args = @_;
    my $prefix = $args{prefix};
    my @keys;
@@ -129,6 +131,47 @@ foreach my $k ( keys %CONTENT ) {
    $sfs3->cmd_pull( "tree", "tree", skip_logic => "stat" );
 
    no_more_expectations_ok;
+}
+
+# S3 path canonicalisation
+{
+   foreach my $path ( "root", "/root", "root/", "/root/" ) {
+      $s3->EXPECT_list_bucket(
+         prefix => "data/root"
+      )->RETURN_F(
+         [ { key => "data/root/key", size => 5 } ], [],
+      );
+
+      $s3->EXPECT_head_then_get_object(
+         key => "data/root/key"
+      )->RETURN_WITH( sub {
+         my %args = @_;
+         my $on_chunk = $args{on_chunk};
+         my $header = HTTP::Response->new( 200, "OK", [] );
+         $on_chunk->( $header, "Hello" );
+         $on_chunk->( $header, undef );
+         return Future->new->done(
+            Future->new->done( "Hello", $header, {} ), $header, {},
+         );
+      });
+
+      $s3->EXPECT_get_object(
+         key => "meta/root/key/md5sum"
+      )->RETURN_F(
+         md5_hex( "Hello" )
+      )->PERSIST;
+
+      $sfs3->EXPECT_fopen_write(
+         path => "local/key",
+      )->RETURN_WITH( sub {
+         open my $fh, ">", \my $tmp;
+         return $fh;
+      });
+
+      $sfs3->cmd_pull( $path, "local", skip_logic => "all" );
+
+      no_more_expectations_ok;
+   }
 }
 
 done_testing;
