@@ -60,7 +60,7 @@ Commands:
    ls [--long] [--recursive] S3PATH
    get [--force] S3FILE [LOCALFILE]
    put LOCALFILE [S3FILE]
-   rm S3PATTERN
+   rm [--recursive] S3PATTERN
    version
 
    push LOCALROOT S3ROOT
@@ -132,10 +132,11 @@ given( shift @ARGV ) {
    }
    when( "rm" ) {
       GetOptions(
+         'r|recursive' => \my $RECURSE,
       ) or exit 1;
       my $s3path = shift @ARGV;
 
-      sfs3()->cmd_rm( $s3path );
+      sfs3()->cmd_rm( $s3path, recurse => $RECURSE );
    }
    when( "push" ) {
       my $SKIP_LOGIC;

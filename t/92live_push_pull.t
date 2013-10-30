@@ -86,4 +86,20 @@ Future->needs_all( map {
    }
 }
 
+# rm -r
+{
+   $sfs3->cmd_rm( "test-tree", recurse => 1 );
+
+   pass( "->cmd_rm OK" );
+
+   # Expect 404s
+   foreach my $name ( @PATHS ) {
+      my $f = $s3->head_object( key => "data/test-tree/$name" );
+      $f->await;
+      ok( scalar $f->failure &&
+          ( $f->failure )[1] eq "http" &&
+          ( $f->failure )[2]->code == 404, "->head_object on $name failed with 404" );
+   }
+}
+
 done_testing;

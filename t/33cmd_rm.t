@@ -41,4 +41,38 @@ my $sfs3 = SocialFlow::S3->new(
    no_more_expectations_ok;
 }
 
+# rm -r tree
+{
+   $s3->EXPECT_list_bucket(
+      delimiter => "",
+      prefix    => "data/tree/",
+   )->RETURN_F(
+      [
+         { key => "data/tree/A" },
+         { key => "data/tree/B" },
+         { key => "data/tree/C" },
+      ],
+      []
+   );
+
+   $s3->EXPECT_list_bucket( prefix => "meta/tree/", delimiter => "/" )->RETURN_F(
+      [], []
+   );
+   foreach my $k (qw( A B C )) {
+      $s3->EXPECT_list_bucket( prefix => "meta/tree/$k/", delimiter => "/" )->RETURN_F(
+         [ { key => "meta/tree/$k/md5sum" } ], []
+      );
+   }
+
+   $s3->EXPECT_delete_object( key => "data/tree" )->RETURN_F();
+   foreach my $k (qw( A B C )) {
+      $s3->EXPECT_delete_object( key => "data/tree/$k" )->RETURN_F();
+      $s3->EXPECT_delete_object( key => "meta/tree/$k/md5sum" )->RETURN_F();
+   }
+
+   $sfs3->cmd_rm( "tree", recurse => 1 );
+
+   no_more_expectations_ok;
+}
+
 done_testing;

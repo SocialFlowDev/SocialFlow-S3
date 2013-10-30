@@ -1176,12 +1176,31 @@ sub cmd_put
 sub cmd_rm
 {
    my $self = shift;
-   my ( $s3pattern ) = @_;
+   my ( $s3pattern, %args ) = @_;
 
    my @s3paths = $self->_expand_pattern( $s3pattern );
    if( !@s3paths ) {
       print STDERR "Nothing matched $s3pattern\n";
       exit 1;
+   }
+
+   if( $args{recurse} ) {
+      my @keys;
+      ( fmap_void {
+         my $s3path = shift;
+         $self->{s3}->list_bucket(
+            prefix => "data/$s3path/",
+            delimiter => "",
+         )->on_done( sub {
+            my ( $keys ) = @_;
+            push @keys,
+               $s3path,
+               map { substr $_->{key}, 5 } @$keys;
+         });
+      } concurrency => 4,
+        foreach => \@s3paths )->get;
+
+     @s3paths = @keys;
    }
 
    # TODO: Future concurrently
