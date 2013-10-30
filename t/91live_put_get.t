@@ -26,6 +26,12 @@ $loop->add( $sfs3 );
 # Cheating
 my $s3 = $sfs3->{s3};
 
+# Ensure it doesn't exist first
+$s3->head_object( key => "data/test-key" )
+   ->and_then( sub {
+      $s3->delete_object( key => "data/test-key" );
+   })->await;
+
 # put
 {
    my ( $fh, $filename ) = tempfile();
