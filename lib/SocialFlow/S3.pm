@@ -107,12 +107,17 @@ sub print_message
 
    return if $self->{quiet};
 
+   # Make one atomic print for smoothness
+   my $buffer = "";
+
    # Clear an old status message
-   print STDERR "\e\x4D\e[K" for 1 .. $self->{status_lines} + $self->{prompt_lines};
+   $buffer .= "\e\x4D\e[K" for 1 .. $self->{status_lines} + $self->{prompt_lines};
    $self->{status_lines} = 0;
 
-   print STDERR "$msg\n";
-   print STDERR $self->{prompt};
+   $buffer .= "$msg\n";
+   $buffer .= $self->{prompt};
+
+   print STDERR $buffer;
 }
 
 sub print_status
@@ -134,10 +139,15 @@ sub print_prompt
 
    $prompt .= "\n" unless $prompt =~ m/\n\Z/;
 
-   # Clear an old prompt
-   print STDERR "\e\x4D\e[K" for 1 .. $self->{prompt_lines};
+   # Make one atomic print for smoothness
+   my $buffer = "";
 
-   print STDERR $prompt;
+   # Clear an old prompt
+   $buffer .= "\e\x4D\e[K" for 1 .. $self->{prompt_lines};
+   $buffer .= $prompt;
+
+   print STDERR $buffer;
+
    $self->{prompt_lines} = ( () = split m/\n/, $prompt, -1 ) - 1;
    $self->{prompt} = $prompt;
 }
