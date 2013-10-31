@@ -1284,7 +1284,7 @@ sub cmd_push
       # Allow $s3root="" to mean upload into root
       my $s3path    = _joinpath( grep { length } $s3root, $relpath );
 
-      push @uploads, my $slot = [ $s3path, $size, "test" ];
+      push @uploads, my $slot = [ $relpath, $size, "test" ];
 
       $self->test_skip( $skip_logic, $s3path, $localpath )->then( sub {
          my ( $skip ) = @_;
@@ -1392,7 +1392,7 @@ sub cmd_pull
          }
 
          $self->print_message( "START $relpath" );
-         push @downloads, my $slot = [ $s3path, $size, 0 ];
+         push @downloads, my $slot = [ $relpath, $size, 0 ];
          $timer->invoke_event( on_tick => );
 
          return $self->get_file(
