@@ -17,6 +17,7 @@ my $build = Module::Build->new(
       'Net::Async::HTTP' => '0.30', # NaWS:S3 needs 0.30
       'Net::Async::Webservice::S3' => '0.15', # neatened ->fail results
       'POSIX::strptime' => 0,
+      'Term::Size' => 0,
       'YAML' => 0,
    },
    build_requires => {

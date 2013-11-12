@@ -23,6 +23,7 @@ use List::Util qw( max );
 use POSIX qw( ceil strftime );
 use POSIX::strptime qw( strptime );
 use Scalar::Util qw( blessed );
+use Term::Size;
 use Time::HiRes qw( time );
 use Time::Local qw( timegm );
 
@@ -33,6 +34,11 @@ use constant DEFAULT_PART_SIZE => 100*1024*1024; # 100 MiB
 use constant FILES_AT_ONCE => 4;
 
 our $VERSION = "0.03";
+
+my $stderr_width = ( Term::Size::chars \*STDERR )[0] // 80;
+$SIG{WINCH} = sub {
+   $stderr_width = ( Term::Size::chars \*STDERR )[0] // 80;
+};
 
 sub _init
 {
@@ -114,7 +120,16 @@ sub print_message
    $buffer .= "\e\x4D\e[K" for 1 .. $self->{status_lines} + $self->{prompt_lines};
    $self->{status_lines} = 0;
 
-   $buffer .= "$msg\n";
+   foreach ( split m/\n/, $msg ) {
+      if( length > $stderr_width ) {
+         $buffer .= substr($_, 0, $stderr_width-3) . "...";
+      }
+      else {
+         $buffer .= $_;
+      }
+      $buffer .= "\n";
+   }
+
    $buffer .= $self->{prompt};
 
    print STDERR $buffer;
