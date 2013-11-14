@@ -25,25 +25,30 @@ Getopt::Long::Configure(qw( no_pass_through ));
 # Don't load the config file until we actually need it
 sub sfs3
 {
-   # YAML::LoadFile doesn't give nice errors when the file doens't exist.
-   unless( -e $CONFIG_FILE ) {
-      print STDERR "Config file $CONFIG_FILE doesn't exist\n";
-      exit 1;
+   my %config;
+
+   # First load config file
+   if( -e $CONFIG_FILE ) {
+      my $file_config = LoadFile( $CONFIG_FILE );
+      defined $file_config->{$_} and $config{$_} = $file_config->{$_}
+         for qw( access_key secret_key bucket ssl crypto_keyid );
    }
 
-   my $config = LoadFile( $CONFIG_FILE );
+   # Then $SFS3_*
+   defined $ENV{"SFS3_".uc $_} and $config{$_} = $ENV{"SFS3_".uc $_}
+      for qw( access_key secret_key bucket ssl crypto_keyid );
 
-   for my $req_key ( qw/access_key secret_key bucket/ ) {
-      unless( exists $config->{$req_key} ) {
-         print STDERR "Cofing was missing required key $req_key\n";
-         exit 1;
-      }
-   }
+   # Finally AWS_* for those standard keys that it supports
+   defined $ENV{"AWS_".uc $_} and $config{$_} = $ENV{"AWS_".uc $_}
+      for qw( access_key secret_key );
+
+   defined $config{$_} or die "Config key '$_' was not found by config file or environment\n"
+      for qw( access_key secret_key bucket );
 
    my $loop = IO::Async::Loop->new;
    my $sfs3 = SocialFlow::S3->new(
       quiet => $QUIET,
-      ( map { $_ => $config->{$_} }
+      ( map { $_ => $config{$_} }
          qw( access_key secret_key bucket ssl crypto_keyid ) ),
    );
    $loop->add( $sfs3 );
