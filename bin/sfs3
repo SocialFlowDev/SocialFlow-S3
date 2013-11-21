@@ -118,6 +118,10 @@ given( shift @ARGV ) {
       my $s3path = shift @ARGV;
       my $localpath = shift @ARGV // basename( $s3path );
 
+      if( -d $localpath ) {
+         $localpath .= "/" . basename( $s3path );
+      }
+
       sfs3()->cmd_get( $s3path, $localpath, no_overwrite => !$FORCE );
    }
    when( "put" ) {
