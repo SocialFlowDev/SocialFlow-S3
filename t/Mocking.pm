@@ -84,9 +84,10 @@ sub no_more_expectations_ok
       'All expected methods were called' );
 }
 
-# TODO: This method is present in latest IO::Async source (0.61+bzr1246) but
-# that's not on CPAN.
+require IO::Async::Future;
 if( !defined &IO::Async::Future::done_later ) {
+   # This method is present in IO::Async 0.61 but not earlier. Don't want to
+   # pull in a later version just for unit testing, so we'll add it in here
    no strict 'refs';
    *{"IO::Async::Future::done_later"} = sub {
       my $self = shift;
