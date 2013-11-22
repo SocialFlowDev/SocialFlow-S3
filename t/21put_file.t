@@ -166,7 +166,7 @@ $s3->EXPECT_put_object(
 
       while( my @part = $gen_parts->() ) {
          # $part[0] should be a Future
-         push @put_parts, $part[0]->get;
+         push @put_parts, scalar $part[0]->get;
       }
 
       my $content = join "", @put_parts;
