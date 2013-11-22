@@ -659,7 +659,6 @@ sub _put_file_from_fh
 
       $fh_stream = $gpg_process->stdout;
       $fh = $fh_stream->read_handle;
-      $more_func = sub { $_[0] };
    }
    else {
       $fh_stream = IO::Async::Stream->new(
@@ -668,10 +667,7 @@ sub _put_file_from_fh
       );
       $self->add_child( $fh_stream );
 
-      $more_func = sub {
-         $md5->add( $_[0] );
-         $_[0];
-      };
+      $more_func = sub { $md5->add( $_[0] ) };
    }
 
    stat( $fh ) or die "Cannot stat FH - $!";
@@ -735,12 +731,14 @@ sub _put_file_from_fh
          $part_offset += $part_len;
 
          if( !ref $part ) {
-            return $more_func->( $part );
+            $more_func->( $part ) if $more_func;
+            return $part;
          }
          elsif( blessed $part and $part->isa( "Future" ) ) {
             return $part->then( sub {
                my ( $more ) = @_;
-               return Future->new->done( $more_func->( $more ) );
+               $more_func->( $more ) if $more_func;
+               return Future->new->done( $more );
             });
          }
          elsif( ref $part eq "CODE" ) {
@@ -750,7 +748,8 @@ sub _put_file_from_fh
                my $end = $pos + $len;
                if( length $buffer < $end ) {
                   my $more = $part->( length $buffer, $end - length $buffer );
-                  $buffer .= $more_func->( $more );
+                  $more_func->( $more ) if $more_func;
+                  $buffer .= $more;
                }
                $on_progress->( $part_start + $end ) if $on_progress;
                return substr( $buffer, $pos, $len );
