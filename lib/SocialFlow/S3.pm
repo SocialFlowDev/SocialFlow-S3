@@ -738,16 +738,12 @@ sub _put_file_from_fh
          if( blessed $part and $part->isa( "Future" ) ) {
             return $part->then( sub {
                my ( $more ) = @_;
-               $on_progress->( $part_start + length $more ) if $on_progress;
                return Future->new->done( $more );
             });
          }
          elsif( ref $part eq "CODE" ) {
             return sub {
                my ( $pos, $len ) = @_;
-               if( $on_progress ) {
-                  $on_progress->( $part_start + $pos + $len );
-               }
                return $part->( $pos, $len );
             }, $part_len
          }
@@ -755,6 +751,7 @@ sub _put_file_from_fh
             die "TOOD: Not sure what to do with part";
          }
       },
+      on_write => $on_progress,
    )->then( sub {
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
    });
