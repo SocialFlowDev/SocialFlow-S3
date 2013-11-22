@@ -717,7 +717,7 @@ sub _put_file_from_fh
                ( my $part, $eof ) = @_;
                $more_func->( $part ) if $more_func;
             });
-         return ( $f, $part_size );
+         return $f;
       };
    }
    else {
@@ -726,32 +726,11 @@ sub _put_file_from_fh
 
    my @more_futures;
 
-   my $part_offset = 0;
    my $f = $self->{s3}->put_object(
       key       => _joinpath( "data", $s3path ),
       meta      => \%meta,
-      gen_parts => sub {
-         my ( $part, $part_len ) = $gen_parts->() or return;
-         my $part_start = $part_offset;
-         $part_offset += $part_len;
-
-         if( blessed $part and $part->isa( "Future" ) ) {
-            return $part->then( sub {
-               my ( $more ) = @_;
-               return Future->new->done( $more );
-            });
-         }
-         elsif( ref $part eq "CODE" ) {
-            return sub {
-               my ( $pos, $len ) = @_;
-               return $part->( $pos, $len );
-            }, $part_len
-         }
-         else {
-            die "TOOD: Not sure what to do with part";
-         }
-      },
-      on_write => $on_progress,
+      gen_parts => $gen_parts,
+      on_write  => $on_progress,
    )->then( sub {
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
    });
