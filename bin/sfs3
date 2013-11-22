@@ -13,6 +13,8 @@ use File::Basename qw( basename );
 use Getopt::Long;
 use YAML qw( LoadFile );
 
+STDERR->autoflush( 1 );
+
 Getopt::Long::Configure(qw(bundling pass_through ));
 
 GetOptions(
