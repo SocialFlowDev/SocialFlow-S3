@@ -691,15 +691,17 @@ sub _put_file_from_fh
 
          $read_pos += $part_length;
 
-         my $gen_value = sub {
+         # Need to atomically ensure the -entire- chunk is read from the disk
+         # initially before we return, in case of concurrency
+         my $buffer = "";
+         while( length $buffer < $part_length ) {
+            sysread( $fh, $buffer, $part_length, length $buffer ) or die "Cannot read - $!";
+         }
+
+         return sub {
             my ( $pos, $len ) = @_;
-            my $ret = sysread( $fh, my $buffer, $len );
-            defined $ret or die "Cannot read - $!";
-
-            return $buffer;
-         };
-
-         return $gen_value, $part_length;
+            return substr( $buffer, $pos, $len );
+         }, $part_length;
       };
    }
    elsif( -p _ or -S _ ) {
@@ -739,17 +741,13 @@ sub _put_file_from_fh
             });
          }
          elsif( ref $part eq "CODE" ) {
-            my $buffer = "";
+            $more_func->( $part->( 0, $part_len ) ) if $more_func;
             return sub {
                my ( $pos, $len ) = @_;
-               my $end = $pos + $len;
-               if( length $buffer < $end ) {
-                  my $more = $part->( length $buffer, $end - length $buffer );
-                  $more_func->( $more ) if $more_func;
-                  $buffer .= $more;
+               if( $on_progress ) {
+                  $on_progress->( $part_size + $pos + $len );
                }
-               $on_progress->( $part_start + $end ) if $on_progress;
-               return substr( $buffer, $pos, $len );
+               return $part->( $pos, $len );
             }, $part_len
          }
          else {
