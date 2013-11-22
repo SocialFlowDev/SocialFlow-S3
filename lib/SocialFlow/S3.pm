@@ -730,11 +730,7 @@ sub _put_file_from_fh
          my $part_start = $part_offset;
          $part_offset += $part_len;
 
-         if( !ref $part ) {
-            $more_func->( $part ) if $more_func;
-            return $part;
-         }
-         elsif( blessed $part and $part->isa( "Future" ) ) {
+         if( blessed $part and $part->isa( "Future" ) ) {
             return $part->then( sub {
                my ( $more ) = @_;
                $more_func->( $more ) if $more_func;
