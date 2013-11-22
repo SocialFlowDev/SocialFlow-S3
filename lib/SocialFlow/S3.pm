@@ -734,6 +734,7 @@ sub _put_file_from_fh
             return $part->then( sub {
                my ( $more ) = @_;
                $more_func->( $more ) if $more_func;
+               $on_progress->( $part_start + length $more ) if $on_progress;
                return Future->new->done( $more );
             });
          }
@@ -1183,7 +1184,8 @@ sub cmd_put
       $self->_put_file_from_fh( \*STDIN, $s3path,
          mtime => time,
          on_progress => sub {
-            # TODO
+            $len_so_far = $_[0];
+            $progress_timer ||= $self->_start_progress_one( undef, \$len_so_far );
          },
          %args,
       )->get;
