@@ -698,6 +698,8 @@ sub _put_file_from_fh
             sysread( $fh, $buffer, $part_length, length $buffer ) or die "Cannot read - $!";
          }
 
+         $more_func->( $buffer ) if $more_func;
+
          return sub {
             my ( $pos, $len ) = @_;
             return substr( $buffer, $pos, $len );
@@ -713,6 +715,7 @@ sub _put_file_from_fh
          my $f = $fh_stream->read_exactly( $part_size )
             ->on_done( sub {
                ( my $part, $eof ) = @_;
+               $more_func->( $part ) if $more_func;
             });
          return ( $f, $part_size );
       };
@@ -735,17 +738,15 @@ sub _put_file_from_fh
          if( blessed $part and $part->isa( "Future" ) ) {
             return $part->then( sub {
                my ( $more ) = @_;
-               $more_func->( $more ) if $more_func;
                $on_progress->( $part_start + length $more ) if $on_progress;
                return Future->new->done( $more );
             });
          }
          elsif( ref $part eq "CODE" ) {
-            $more_func->( $part->( 0, $part_len ) ) if $more_func;
             return sub {
                my ( $pos, $len ) = @_;
                if( $on_progress ) {
-                  $on_progress->( $part_size + $pos + $len );
+                  $on_progress->( $part_start + $pos + $len );
                }
                return $part->( $pos, $len );
             }, $part_len
