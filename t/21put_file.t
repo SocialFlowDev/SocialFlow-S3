@@ -11,6 +11,7 @@ use t::MockS3;
 use File::Temp qw( tempfile );
 use Digest::MD5 qw( md5_hex );
 use HTTP::Response;
+use Scalar::Util qw( blessed );
 
 use IO::Async::Loop;
 
@@ -41,12 +42,14 @@ $s3->EXPECT_put_object(
    my $pos = 0;
    while( my @part = $gen_parts->() ) {
       # $part[0] should be a Future or CODE
+      @part = $part[0]->get if blessed $part[0] and $part[0]->isa( "Future" );
+
       if( ref $part[0] eq "CODE" ) {
          $put_content .= $part[0]->( $pos, $part[1] );
          $pos = length $put_content;
       }
       else {
-         $put_content .= $part[0]->get;
+         $put_content .= $part[0];
       }
    }
 
@@ -120,8 +123,9 @@ $s3->EXPECT_put_object(
       %put_meta = %{ $args{meta} };
 
       while( my @part = $gen_parts->() ) {
-         # $part[0] should be a Future
-         $put_content .= $part[0]->get;
+         # $part[0] should be a Future->CODE
+         my ( $code, $len ) = $part[0]->get;
+         $put_content .= $code->( 0, $len );
       }
 
       # MD5sum and length in bytes
@@ -165,8 +169,9 @@ $s3->EXPECT_put_object(
       my $gen_parts = $args{gen_parts};
 
       while( my @part = $gen_parts->() ) {
-         # $part[0] should be a Future
-         push @put_parts, scalar $part[0]->get;
+         # $part[0] should be a Future->CODE
+         my ( $code, $len ) = $part[0]->get;
+         push @put_parts, $code->( 0, $len );
       }
 
       my $content = join "", @put_parts;

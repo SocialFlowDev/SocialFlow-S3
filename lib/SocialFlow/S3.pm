@@ -713,9 +713,17 @@ sub _put_file_from_fh
       $gen_parts = sub {
          return if $eof;
          my $f = $fh_stream->read_exactly( $part_size )
-            ->on_done( sub {
-               ( my $part, $eof ) = @_;
-               $more_func->( $part ) if $more_func;
+            ->then( sub {
+               # Avoid copying $_[0] because it may be a large string
+               my $contentref = \$_[0];
+               $eof = $_[1];
+
+               $more_func->( $$contentref ) if $more_func; # TODO
+               my $code = sub {
+                  my ( $pos, $len ) = @_;
+                  return substr( $$contentref, $pos, $len );
+               };
+               Future->new->done( $code, length $$contentref );
             });
          return $f;
       };

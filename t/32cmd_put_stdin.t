@@ -34,8 +34,9 @@ my $sfs3 = SocialFlow::S3->new(
       %put_meta = %{ $args{meta} };
 
       while( my @part = $gen_parts->() ) {
-         # $part[0] should be a Future
-         $put_content .= $part[0]->get;
+         # $part[0] should be a Future->CODE
+         my ( $code, $len ) = $part[0]->get;
+         $put_content .= $code->( 0, $len );
       }
 
       # MD5sum and length in bytes

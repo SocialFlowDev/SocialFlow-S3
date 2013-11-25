@@ -54,8 +54,9 @@ my $ciphertext_md5sum;
       %ciphertext_meta = %{ $args{meta} };
 
       while( my @part = $gen_parts->() ) {
-         # $part[0] should be a Future
-         $ciphertext_content .= $part[0]->get;
+         # $part[0] should be a Future->CODE
+         my ( $code, $len ) = $part[0]->get;
+         $ciphertext_content .= $code->( 0, $len );
       }
 
       # MD5sum and length in bytes
