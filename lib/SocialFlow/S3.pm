@@ -667,7 +667,9 @@ sub _put_file_from_fh
       );
       $self->add_child( $fh_stream );
 
-      $more_func = sub { $md5->add( $_[0] ) };
+      $more_func = sub {
+         $md5->add( ref $_[0] ? ${$_[0]} : $_[0] );
+      };
    }
 
    stat( $fh ) or die "Cannot stat FH - $!";
@@ -718,7 +720,7 @@ sub _put_file_from_fh
                my $contentref = \$_[0];
                $eof = $_[1];
 
-               $more_func->( $$contentref ) if $more_func; # TODO
+               $more_func->( $contentref ) if $more_func;
                my $code = sub {
                   my ( $pos, $len ) = @_;
                   return substr( $$contentref, $pos, $len );
