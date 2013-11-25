@@ -711,6 +711,13 @@ sub _put_file_from_fh
    elsif( -p _ or -S _ ) {
       # pipe or socket
       # this case is used for all GPG-driven input
+
+      # Set waterlevels to ensure the stream buffer doesn't grow arbitrarily
+      $fh_stream->configure(
+         read_high_watermark => $part_size * 1.2,
+         read_low_watermark  => $part_size * 0.6,
+      );
+
       my $eof;
       $gen_parts = sub {
          return if $eof;
