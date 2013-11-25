@@ -712,10 +712,14 @@ sub _put_file_from_fh
       # pipe or socket
       # this case is used for all GPG-driven input
 
-      # Set waterlevels to ensure the stream buffer doesn't grow arbitrarily
       $fh_stream->configure(
+         # Set waterlevels to ensure the stream buffer doesn't grow arbitrarily
          read_high_watermark => $part_size * 1.2,
          read_low_watermark  => $part_size * 0.6,
+
+         # Need the stream -not- to ->remove itself from the Loop when it hits EOF
+         #   TODO: IO::Async might want to defer this one
+         close_on_read_eof => 0,
       );
 
       my $eof;
@@ -726,6 +730,8 @@ sub _put_file_from_fh
                # Avoid copying $_[0] because it may be a large string
                my $contentref = \$_[0];
                $eof = $_[1];
+
+               $fh_stream->remove_from_parent if $eof;
 
                $more_func->( $contentref ) if $more_func;
                my $code = sub {
