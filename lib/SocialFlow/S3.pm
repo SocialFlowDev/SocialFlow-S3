@@ -12,14 +12,14 @@ use IO::Async::Listener;
 use IO::Async::Process;
 use IO::Async::Stream;
 use IO::Async::Timer::Periodic;
-use Net::Async::Webservice::S3 0.14; # ->head_then_get_object
+use Net::Async::Webservice::S3 0.17; # concurrent ->put_object
 
 use Cwd qw( abs_path );
 use Digest::MD5;
 use File::Basename qw( dirname );
 use File::Path qw( make_path );
 use IO::Termios;
-use List::Util qw( max );
+use List::Util qw( max sum );
 use POSIX qw( ceil strftime );
 use POSIX::strptime qw( strptime );
 use Scalar::Util qw( blessed );
@@ -54,7 +54,13 @@ sub _init
       read_size => 256*1024,
    );
 
-   $args->{s3}->{http}->configure( max_connections_per_host => 0 );
+   $args->{s3}->{http}->configure(
+      # TODO: Currently it's essential to turn off pipelining so that multiple
+      # concurrent uploads of parts of a single file will work
+      #   https://rt.cpan.org/Ticket/Display.html?id=89776
+      pipeline => 0,
+      max_connections_per_host => 0,
+   );
 
    $args->{timeout}       //= 10;
    $args->{stall_timeout} //= 30;
@@ -750,10 +756,11 @@ sub _put_file_from_fh
    my @more_futures;
 
    my $f = $self->{s3}->put_object(
-      key       => _joinpath( "data", $s3path ),
-      meta      => \%meta,
-      gen_parts => $gen_parts,
-      on_write  => $on_progress,
+      key        => _joinpath( "data", $s3path ),
+      meta       => \%meta,
+      gen_parts  => $gen_parts,
+      on_write   => $on_progress,
+      concurrent => $args{concurrent},
    )->then( sub {
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
    });
@@ -1195,6 +1202,7 @@ sub cmd_put
             $len_so_far = $_[0];
             $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
          },
+         %args,
       )->get;
    }
 

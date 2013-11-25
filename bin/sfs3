@@ -66,7 +66,7 @@ Usage: sfs3 COMMAND [--config=file] [OPTIONS...]
 Commands:
    ls [--long] [--recursive] S3PATH
    get [--force] S3FILE [LOCALFILE]
-   put LOCALFILE [S3FILE]
+   put [--concurrent=N] LOCALFILE [S3FILE]
    rm [--recursive] S3PATTERN
    version
 
@@ -128,7 +128,8 @@ given( shift @ARGV ) {
    }
    when( "put" ) {
       GetOptions(
-         'f|force' => \my $FORCE,
+         'f|force'        => \my $FORCE,
+         'c|concurrent=i' => \my $CONCURRENT,
       ) or exit 1;
       my $localpath = shift @ARGV;
       my $s3path = shift @ARGV;
@@ -139,7 +140,10 @@ given( shift @ARGV ) {
          $s3path .= basename( $localpath );
       }
 
-      sfs3()->cmd_put( $localpath, $s3path, no_overwrite => !$FORCE );
+      sfs3()->cmd_put( $localpath, $s3path,
+         no_overwrite => !$FORCE,
+         concurrent   => $CONCURRENT,
+      );
    }
    when( "rm" ) {
       GetOptions(

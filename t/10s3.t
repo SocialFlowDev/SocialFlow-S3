@@ -18,7 +18,8 @@ my %http_config;
 my %s3_config;
 
 is_deeply( \%http_config,
-           { max_connections_per_host => 0 },
+           { max_connections_per_host => 0,
+             pipeline                 => 0 },
            'NaHTTP config' );
 
 is_deeply( \%s3_config,
