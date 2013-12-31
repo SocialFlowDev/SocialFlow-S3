@@ -27,13 +27,15 @@ t::Mocking->mock_methods_into( "SocialFlow::S3", qw(
 my $content = "The value of key-1";
 
 $s3->EXPECT_get_object(
-   key => "meta/key-1/md5sum"
+   key     => "meta/key-1/md5sum",
+   timeout => 10,
 )->RETURN_F(
    md5_hex( $content )
 )->PERSIST;
 
 $s3->EXPECT_head_then_get_object(
-   key => "data/key-1"
+   key           => "data/key-1",
+   stall_timeout => 30,
 )->RETURN_WITH( sub {
    my %args = @_;
    my $on_chunk = $args{on_chunk};
@@ -92,7 +94,8 @@ $s3->EXPECT_head_then_get_object(
 }
 
 $s3->EXPECT_get_object(
-   key => "meta/key-2/md5sum"
+   key     => "meta/key-2/md5sum",
+   timeout => 10,
 )->RETURN_F(
    md5_hex( $content )
 )->PERSIST;
@@ -101,7 +104,8 @@ $s3->EXPECT_get_object(
 {
    # First result corrupts the content
    $s3->EXPECT_head_then_get_object(
-      key => "data/key-2"
+      key           => "data/key-2",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};
@@ -131,7 +135,8 @@ $s3->EXPECT_get_object(
 {
    # First result corrupts the content
    $s3->EXPECT_head_then_get_object(
-      key => "data/key-2"
+      key           => "data/key-2",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};
@@ -148,7 +153,8 @@ $s3->EXPECT_get_object(
 
    # Second result is correct
    $s3->EXPECT_head_then_get_object(
-      key => "data/key-2"
+      key           => "data/key-2",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};

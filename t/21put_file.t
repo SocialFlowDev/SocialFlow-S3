@@ -33,7 +33,8 @@ my $put_content = "";
 my $put_md5sum;
 
 $s3->EXPECT_put_object(
-   key => "data/key-1"
+   key           => "data/key-1",
+   stall_timeout => 30,
 )->RETURN_WITH( sub {
    my %args = @_;
    my $gen_parts = $args{gen_parts};
@@ -58,7 +59,8 @@ $s3->EXPECT_put_object(
 })->PERSIST;
 
 $s3->EXPECT_put_object(
-   key => "meta/key-1/md5sum"
+   key     => "meta/key-1/md5sum",
+   timeout => 10,
 )->RETURN_WITH( sub {
    my %args = @_;
    $put_md5sum = $args{value};
@@ -116,7 +118,8 @@ $s3->EXPECT_put_object(
    ( %put_meta, $put_content, $put_md5sum ) = ();
 
    $s3->EXPECT_put_object(
-      key => "data/key-new",
+      key           => "data/key-new",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $gen_parts = $args{gen_parts};
@@ -133,7 +136,8 @@ $s3->EXPECT_put_object(
    });
 
    $s3->EXPECT_put_object(
-      key => "meta/key-new/md5sum",
+      key     => "meta/key-new/md5sum",
+      timeout => 10,
    )->RETURN_WITH( sub {
       my %args = @_;
       $put_md5sum = $args{value};
@@ -163,7 +167,8 @@ $s3->EXPECT_put_object(
 
    my @put_parts;
    $s3->EXPECT_put_object(
-      key => "data/key-split",
+      key           => "data/key-split",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $gen_parts = $args{gen_parts};
@@ -179,7 +184,8 @@ $s3->EXPECT_put_object(
    });
 
    $s3->EXPECT_put_object(
-      key => "meta/key-split/md5sum",
+      key     => "meta/key-split/md5sum",
+      timeout => 10,
    )->RETURN_WITH( sub {
       return $loop->new_future->done_later( "ETAG", 32 );
    });

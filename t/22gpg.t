@@ -47,7 +47,8 @@ my $ciphertext_md5sum;
 # put
 {
    $s3->EXPECT_put_object(
-      key => "data/secret"
+      key           => "data/secret",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $gen_parts = $args{gen_parts};
@@ -64,7 +65,8 @@ my $ciphertext_md5sum;
    });
 
    $s3->EXPECT_put_object(
-      key => "meta/secret/md5sum"
+      key     => "meta/secret/md5sum",
+      timeout => 10,
    )->RETURN_WITH( sub {
       my %args = @_;
       $ciphertext_md5sum = $args{value};
@@ -97,13 +99,15 @@ my $ciphertext_md5sum;
 
 {
    $s3->EXPECT_get_object(
-      key => "meta/secret/md5sum"
+      key     => "meta/secret/md5sum",
+      timeout => 10,
    )->RETURN_F(
       $ciphertext_md5sum,
    );
 
    $s3->EXPECT_head_then_get_object(
-      key => "data/secret"
+      key           => "data/secret",
+      stall_timeout => 30,
    )->RETURN_WITH( sub {
       my %args = @_;
       my $on_chunk = $args{on_chunk};
