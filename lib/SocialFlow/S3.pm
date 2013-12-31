@@ -761,6 +761,7 @@ sub _put_file_from_fh
       gen_parts  => $gen_parts,
       on_write   => $on_progress,
       concurrent => $args{concurrent},
+      stall_timeout => $self->{stall_timeout},
    )->then( sub {
       $self->put_meta( $s3path, "md5sum", $md5->hexdigest . "\n" );
    });
@@ -896,6 +897,7 @@ sub _get_file_to_code
                $prebuffer_more .= $data if defined $data;
             }
          },
+         stall_timeout => $self->{stall_timeout},
       )->then( sub {
          my ( $value_f, $header, $meta ) = @_;
 
