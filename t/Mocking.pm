@@ -9,6 +9,8 @@ our @EXPORT = qw(
    MATCHES
 );
 
+use Carp;
+
 # A micro expectation-based mocking system
 
 my @expectations; # [] = [$package, $method, \%args, $flags, return]
@@ -73,7 +75,7 @@ sub mock_methods_into
             return $e->[4]->( %args );
          }
 
-         die "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
+         croak "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
       };
    }
 }
