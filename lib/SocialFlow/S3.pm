@@ -130,7 +130,7 @@ sub print_message
    $self->{status_lines} = 0;
 
    foreach ( split m/\n/, $msg ) {
-      if( length > $stderr_width ) {
+      if( $stderr_width and length > $stderr_width ) {
          $buffer .= substr($_, 0, $stderr_width-3) . "...";
       }
       else {
