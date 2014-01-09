@@ -21,6 +21,7 @@ GetOptions(
    'C|config=s' => \(my $CONFIG_FILE = "$ENV{HOME}/.sfs3.conf"),
    'q|quiet'    => \my $QUIET,
    'progress!'  => \(my $PROGRESS = 1),
+   'd|debug+'   => \(my $DEBUG = 0),
 ) or do_help(), exit 1;
 
 Getopt::Long::Configure(qw( no_pass_through ));
@@ -52,6 +53,7 @@ sub sfs3
    my $sfs3 = SocialFlow::S3->new(
       quiet    => $QUIET,
       progress => $PROGRESS,
+      debug    => $DEBUG,
       ( map { $_ => $config{$_} }
          qw( access_key secret_key bucket ssl crypto_keyid ) ),
    );

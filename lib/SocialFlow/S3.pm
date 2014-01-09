@@ -67,6 +67,9 @@ sub _init
    $args->{get_retries}   //= 3;
    $args->{part_size}     //= DEFAULT_PART_SIZE;
 
+   $args->{progress}      //= 0;
+   $args->{debug}         //= 0;
+
    $self->{status_lines} = 0;
    $self->{prompt_lines} = 0;
    $self->{prompt}       = "";
@@ -84,7 +87,7 @@ sub configure
       $self->add_child( $self->{s3} = $s3 );
    }
 
-   foreach (qw( quiet progress get_retries part_size )) {
+   foreach (qw( quiet progress debug get_retries part_size )) {
       $self->{$_} = delete $args{$_} if exists $args{$_};
    }
 
@@ -181,6 +184,14 @@ sub clear_prompt
 
    $self->{prompt_lines} = 0;
    $self->{prompt}       = "";
+}
+
+sub print_debug
+{
+   my $self = shift;
+   my ( $level, $message ) = @_;
+
+   $self->print_message( "DEBUG$level $message" ) if $self->{debug} >= $level;
 }
 
 # Join filepaths by ensuring exactly one '/' between each component
@@ -537,23 +548,48 @@ sub test_skip
          $f = Future->new->done( 0 );
       }
       when( "stat" ) {
-         my ( undef, $size, $mtime ) = $self->fstat_type_size_mtime( path => $localpath );
-         defined $size or return Future->new->done( 0 );
+         my ( undef, $localsize, $localmtime ) = $self->fstat_type_size_mtime( path => $localpath );
+         if( !defined $localsize ) { 
+            $self->print_debug( 1 => "no skip - local file missing" );
+            return Future->new->done( 0 );
+         }
 
          # Fetch the md5sum meta anyway even if we aren't going to use it, because if
          # it's missing we definitely want to re-upload
          $f = Future->needs_all(
-            $self->{s3}->head_object( key => _joinpath( "data", $s3path ) ),
-            $self->get_meta( $s3path, "md5sum" )->transform( done => sub { chomp $_[0]; $_[0] } ),
+            $self->{s3}->head_object( key => _joinpath( "data", $s3path ) )->else_with_f( sub {
+               my ( $f, $message, $name, $response ) = @_;
+               $self->print_debug( 1 => "no skip - $s3path data missing" )
+                  if $name and $name eq "http" and $response and $response->code == 404;
+               return $f;
+            }),
+            $self->get_meta( $s3path, "md5sum" )->transform( done => sub { chomp $_[0]; $_[0] } )->else_with_f( sub {
+               my ( $f, $message, $name, $response ) = @_;
+               $self->print_debug( 1 => "no skip - $s3path meta md5sum missing" )
+                  if $name and $name eq "http" and $response and $response->code == 404;
+               return $f;
+            }),
          )->then( sub {
             my ( $header, $meta, $s3md5 ) = @_;
 
-            return Future->new->done( 0 ) unless defined $meta->{Mtime};
+            if( !defined $meta->{Mtime} ) {
+               $self->print_debug( 1 => "no skip - $s3path missing Mtime" );
+               return Future->new->done( 0 );
+            }
 
-            return Future->new->done(
-               $header->content_length == $size && strptime_iso8601( $meta->{Mtime} ) == $mtime,
-               $s3md5,
-            );
+            my $s3size = $header->content_length;
+            if( $s3size != $localsize ) {
+               $self->print_debug( 1 => "no skip - lengths differ (S3 $s3size; local $localsize)" );
+               return Future->new->done( 0 );
+            }
+
+            my $s3mtime = strptime_iso8601( $meta->{Mtime} );
+            if( $s3mtime != $localmtime ) {
+               $self->print_debug( 1 => "no skip - mtime differs (S3 $s3mtime; local $localmtime)" );
+               return Future->new->done( 0 );
+            }
+
+            return Future->new->done( 1, $s3md5 );
          })->else_with_f( _gen_ignore_404( 0 ) );
       }
       when( "md5sum" ) {
@@ -579,7 +615,13 @@ sub test_skip
 
             $localmd5_f->then( sub {
                my ( $localmd5 ) = @_;
-               return Future->new->done( $localmd5 eq $s3md5 );
+
+               if( $s3md5 ne $localmd5 ) {
+                  $self->print_debug( 1 => "no skip - MD5sum differs (S3 $s3md5; local $localmd5)" );
+                  return Future->new->done( 0 );
+               }
+
+               return Future->new->done( 1 );
             })->else_with_f( _gen_ignore_404( 0 ) );
          });
       }
