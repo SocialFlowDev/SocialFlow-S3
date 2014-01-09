@@ -6,7 +6,7 @@ use feature qw( switch );
 use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
-use Future;
+use Future 0.21; # ->then_with_f, ->else_with_f
 use Future::Utils qw( try_repeat fmap1 fmap_void );
 use IO::Async::Listener;
 use IO::Async::Process;
@@ -511,14 +511,13 @@ sub delete_meta
    });
 }
 
-# Make an 'or_else' sub that ignores http 404 responses
+# Make an 'else_with_f' sub that ignores http 404 responses
 sub _gen_ignore_404
 {
    my ( $return_on_404 ) = @_;
 
    sub {
-      my $f = shift;
-      my ( $message, $name, $response ) = $f->failure;
+      my ( $f, $message, $name, $response ) = @_;
       return Future->new->done( $return_on_404 ) if $name and $name eq "http" and
                                                     $response and $response->code == 404;
       return $f;
@@ -555,7 +554,7 @@ sub test_skip
                $header->content_length == $size && strptime_iso8601( $meta->{Mtime} ) == $mtime,
                $s3md5,
             );
-         })->or_else( _gen_ignore_404( 0 ) );
+         })->else_with_f( _gen_ignore_404( 0 ) );
       }
       when( "md5sum" ) {
          $f = $self->test_skip( "stat", $s3path, $localpath )->then( sub {
@@ -581,7 +580,7 @@ sub test_skip
             $localmd5_f->then( sub {
                my ( $localmd5 ) = @_;
                return Future->new->done( $localmd5 eq $s3md5 );
-            })->or_else( _gen_ignore_404( 0 ) );
+            })->else_with_f( _gen_ignore_404( 0 ) );
          });
       }
       default {
@@ -599,7 +598,7 @@ sub stat_file
 
    $self->{s3}->head_object(
       key => _joinpath( "data", $s3path ),
-   )->or_else( _gen_ignore_404( undef ) );
+   )->else_with_f( _gen_ignore_404( undef ) );
 }
 
 sub _put_file_from_fh
@@ -651,9 +650,8 @@ sub _put_file_from_fh
       $gpg_process->stdin->write( sub {
          return undef if $eof;
          return $fh_in->read_atmost( 64 * 1024 ) # 64 KiB
-            ->and_then( sub {
-               my $f = shift;
-               ( my $content, $eof ) = $f->get;
+            ->then_with_f( sub {
+               ( my $f, my $content, $eof ) = @_;
 
                $md5->add( $content );
 
