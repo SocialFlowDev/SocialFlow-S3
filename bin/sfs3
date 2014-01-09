@@ -20,6 +20,7 @@ Getopt::Long::Configure(qw(bundling pass_through ));
 GetOptions(
    'C|config=s' => \(my $CONFIG_FILE = "$ENV{HOME}/.sfs3.conf"),
    'q|quiet'    => \my $QUIET,
+   'progress!'  => \(my $PROGRESS = 1),
 ) or do_help(), exit 1;
 
 Getopt::Long::Configure(qw( no_pass_through ));
@@ -49,7 +50,8 @@ sub sfs3
 
    my $loop = IO::Async::Loop->new;
    my $sfs3 = SocialFlow::S3->new(
-      quiet => $QUIET,
+      quiet    => $QUIET,
+      progress => $PROGRESS,
       ( map { $_ => $config{$_} }
          qw( access_key secret_key bucket ssl crypto_keyid ) ),
    );

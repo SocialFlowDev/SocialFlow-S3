@@ -84,7 +84,7 @@ sub configure
       $self->add_child( $self->{s3} = $s3 );
    }
 
-   foreach (qw( quiet get_retries part_size )) {
+   foreach (qw( quiet progress get_retries part_size )) {
       $self->{$_} = delete $args{$_} if exists $args{$_};
    }
 
@@ -1137,7 +1137,7 @@ sub cmd_get
 
    if( $localpath eq "-" ) {
       # Only do progress output if STDOUT is not a terminal
-      my $do_progress = !-t \*STDOUT;
+      my $do_progress = $self->{progress} && !-t \*STDOUT;
 
       $self->_get_file_to_code(
          $s3path,
@@ -1162,10 +1162,11 @@ sub cmd_get
 
       $self->get_file(
          $s3path, $localpath,
-         on_progress => sub {
-            $len_so_far = $_[0];
-            $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
-         },
+         ( $self->{progress} ? 
+            ( on_progress => sub {
+               $len_so_far = $_[0];
+               $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
+            } ) : () ),
       )->get;
    }
 
@@ -1190,20 +1191,20 @@ sub cmd_put
    if( $localpath eq "-" ) {
       $self->_put_file_from_fh( \*STDIN, $s3path,
          mtime => time,
-         on_progress => sub {
-            $len_so_far = $_[0];
-            $progress_timer ||= $self->_start_progress_one( undef, \$len_so_far );
-         },
+         ( $self->{progress} ? ( on_progress => sub {
+               $len_so_far = $_[0];
+               $progress_timer ||= $self->_start_progress_one( undef, \$len_so_far );
+            } ) : () ),
          %args,
       )->get;
    }
    else {
       $self->put_file(
          $localpath, $s3path,
-         on_progress => sub {
-            $len_so_far = $_[0];
-            $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
-         },
+         ( $self->{progress} ? ( on_progress => sub {
+               $len_so_far = $_[0];
+               $progress_timer ||= $self->_start_progress_one( $_[1], \$len_so_far );
+            } ) : () ),
          %args,
       )->get;
    }
@@ -1305,7 +1306,10 @@ sub cmd_push
    my $skipped_bytes   = 0;
 
    my @uploads;
-   my $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
+   my $timer;
+   if( $self->{progress} ) {
+      $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
+   }
 
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
@@ -1326,13 +1330,13 @@ sub cmd_push
             $skipped_bytes   += $size;
 
             @uploads = grep { $_ != $slot } @uploads;
-            $timer->invoke_event( on_tick => );
+            $timer->invoke_event( on_tick => ) if $timer;
             return Future->new->done;
          }
 
          $self->print_message( "START $relpath" );
          $slot->[2] = 0;
-         $timer->invoke_event( on_tick => );
+         $timer->invoke_event( on_tick => ) if $timer;
 
          return $self->put_file(
             $localpath, $s3path,
@@ -1343,7 +1347,7 @@ sub cmd_push
             $completed_bytes += $size;
 
             @uploads = grep { $_ != $slot } @uploads;
-            $timer->invoke_event( on_tick => );
+            $timer->invoke_event( on_tick => ) if $timer;
          });
       });
    } foreach => \@files,
@@ -1353,7 +1357,8 @@ sub cmd_push
       "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
       $completed_files, $completed_files - $skipped_files, $skipped_files,
       $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
-   $self->remove_child( $timer );
+
+   $self->remove_child( $timer ) if $timer;
 }
 
 sub cmd_pull
@@ -1401,7 +1406,11 @@ sub cmd_pull
    my $skipped_bytes   = 0;
 
    my @downloads;
-   my $timer = $self->_start_progress_bulk( \@downloads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
+
+   my $timer;
+   if( $self->{progress} ) {
+      $timer = $self->_start_progress_bulk( \@downloads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
+   }
 
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
@@ -1423,7 +1432,7 @@ sub cmd_pull
 
          $self->print_message( "START $relpath" );
          push @downloads, my $slot = [ $relpath, $size, 0 ];
-         $timer->invoke_event( on_tick => );
+         $timer->invoke_event( on_tick => ) if $timer;
 
          return $self->get_file(
             $s3path, $localpath,
@@ -1435,7 +1444,7 @@ sub cmd_pull
             $completed_bytes += $size;
 
             @downloads = grep { $_ != $slot } @downloads;
-            $timer->invoke_event( on_tick => );
+            $timer->invoke_event( on_tick => ) if $timer;
          });
       });
    } foreach => \@files,
@@ -1445,7 +1454,8 @@ sub cmd_pull
       "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
       $completed_files, $completed_files - $skipped_files, $skipped_files,
       $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
-   $self->remove_child( $timer );
+
+   $self->remove_child( $timer ) if $timer;
 }
 
 1;
