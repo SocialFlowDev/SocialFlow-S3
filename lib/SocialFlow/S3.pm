@@ -1345,12 +1345,16 @@ sub cmd_push
    my $skipped_files   = 0;
    my $completed_bytes = 0;
    my $skipped_bytes   = 0;
+   my $aborted_files   = 0;
+   my $aborted_bytes   = 0;
 
    my @uploads;
    my $timer;
    if( $self->{progress} ) {
       $timer = $self->_start_progress_bulk( \@uploads, $total_files, $total_bytes, \$completed_files, \$completed_bytes, \$skipped_bytes );
    }
+
+   my $recent_aborts = 0;
 
    ( fmap_void {
       my ( $relpath, $size ) = @{$_[0]};
@@ -1390,16 +1394,37 @@ sub cmd_push
             @uploads = grep { $_ != $slot } @uploads;
             $timer->invoke_event( on_tick => ) if $timer;
          });
+      })->on_done( sub { $recent_aborts = 0 } )
+      ->else_with_f( sub {
+         my ( $f ) = @_;
+
+         $self->print_message( "ABORT $relpath" );
+         $aborted_files += 1;
+         $aborted_bytes += $size;
+
+         $recent_aborts++;
+
+         if( $recent_aborts >= 5 ) {
+            # Too many recent failures; stop there
+            return $f;
+         }
+         else {
+            return Future->new->done( "ABORT" );
+         }
       });
    } foreach => \@files,
      concurrent => $concurrent )->get;
+
+   $self->remove_child( $timer ) if $timer;
 
    $self->print_message( sprintf "All files done\n" . 
       "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
       $completed_files, $completed_files - $skipped_files, $skipped_files,
       $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
 
-   $self->remove_child( $timer ) if $timer;
+   if( $aborted_files ) {
+      die sprintf "%d files (%d bytes) ABORTED\n", $aborted_files, $aborted_bytes;
+   }
 }
 
 sub cmd_pull
