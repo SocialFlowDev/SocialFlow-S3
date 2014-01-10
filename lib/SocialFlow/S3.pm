@@ -1065,7 +1065,8 @@ sub get_file
       my $f = shift;
       my ( $failure, $name, $response ) = $f->failure or return 0; # success
       return 0 if $name and $name eq "http" and
-                  $response and $response->code =~ m/^4/; # don't retry HTTP 4xx
+                  $response and $response->code =~ m/^4/ # don't retry HTTP 4xx
+                            and $response->code != 400;  # but do retry 400 itself because S3 sometimes throws those :/
       return --$retries;
    })->then( sub {
       my ( $header, $meta ) = @_;
