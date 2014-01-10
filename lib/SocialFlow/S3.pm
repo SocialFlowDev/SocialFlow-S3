@@ -1417,13 +1417,21 @@ sub cmd_push
 
    $self->remove_child( $timer ) if $timer;
 
-   $self->print_message( sprintf "All files done\n" . 
-      "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
-      $completed_files, $completed_files - $skipped_files, $skipped_files,
-      $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
 
    if( $aborted_files ) {
-      die sprintf "%d files (%d bytes) ABORTED\n", $aborted_files, $aborted_bytes;
+      $self->print_message( sprintf "ABORTED due to failure\n" .
+         "  %d files (%d bytes) aborted\n" .
+         "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
+         $aborted_files, $aborted_bytes,
+         $completed_files, $completed_files - $skipped_files, $skipped_files,
+         $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
+      exit 1;
+   }
+   else {
+      $self->print_message( sprintf "All files done\n" . 
+         "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
+         $completed_files, $completed_files - $skipped_files, $skipped_files,
+         $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
    }
 }
 
@@ -1539,13 +1547,20 @@ sub cmd_pull
 
    $self->remove_child( $timer ) if $timer;
 
-   $self->print_message( sprintf "All files done\n" . 
-      "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
-      $completed_files, $completed_files - $skipped_files, $skipped_files,
-      $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
-
    if( $aborted_files ) {
-      die sprintf "%d files (%d bytes) ABORTED\n", $aborted_files, $aborted_bytes;
+      $self->print_message( sprintf "ABORTED due to failure\n" .
+         "  %d files (%d bytes) aborted\n" .
+         "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
+         $aborted_files, $aborted_bytes,
+         $completed_files, $completed_files - $skipped_files, $skipped_files,
+         $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
+      exit 1;
+   }
+   else {
+      $self->print_message( sprintf "All files done\n" . 
+         "  %d files (%d transferred, %d skipped)\n  %d bytes (%d transferred, %d skipped)",
+         $completed_files, $completed_files - $skipped_files, $skipped_files,
+         $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
    }
 }
 
