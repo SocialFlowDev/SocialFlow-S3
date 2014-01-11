@@ -951,7 +951,7 @@ sub _get_file_to_code
                   on_read => sub {
                      my ( undef, $buffref ) = @_;
                      $md5->add( $$buffref );
-                     $on_data->( $header, $$buffref );
+                     $on_data->( $header, $$buffref, $meta );
                      $$buffref = "";
                   },
                },
@@ -986,7 +986,7 @@ sub _get_file_to_code
          else {
             $on_more = sub {
                $md5->add( $_[0] ) if defined $_[0];
-               $on_data->( $header, $_[0] );
+               $on_data->( $header, $_[0], $meta );
             };
             if( defined $prebuffer_more ) {
                $on_more->( $prebuffer_more );
@@ -1079,6 +1079,85 @@ sub get_file
       }
 
       Future->new->done;
+   });
+}
+
+# A sortof combination of get and put; reads local and S3 files and compares.
+# Future returns false if no differences, or one of "size", "mtime", "bytes"
+sub cmp_file
+{
+   my $self = shift;
+   my ( $localpath, $s3path, %args ) = @_;
+   my $on_progress = $args{on_progress};
+
+   my $fh = $self->fopen_read( path => $localpath );
+
+   my ( undef, $locallen, $localmtime ) = $self->fstat_type_size_mtime( fh => $fh );
+
+   my $len_total;
+   my $len_so_far;
+
+   my $delay = 0.5;
+   my $retries = $self->{get_retries};
+
+   my $result;
+
+   ( try_repeat {
+      my ( $prev_f ) = @_;
+
+      # Add a small delay after failure before retrying
+      my $delay_f =
+         $prev_f ? $self->loop->delay_future( after => ( $delay *= 2 ) )
+                 : Future->new->done;
+
+      $delay_f->then( sub {
+         $fh->seek( 0, 0 );
+
+         $self->_get_file_to_code(
+            $s3path,
+            sub {
+               my ( $header, $s3data, $s3meta ) = @_;
+               return unless defined $s3data;
+
+               if( !defined $len_total ) {
+                  $len_so_far = 0;
+                  $len_total = $header->content_length;
+
+                  if( $len_total != $locallen ) {
+                     $result ||= "size";
+                  }
+                  if( defined $s3meta->{Mtime} ) {
+                     my $s3mtime = strptime_iso8601( $s3meta->{Mtime} );
+                     if( $s3mtime != $localmtime ) {
+                        $result ||= "mtime";
+                     }
+                  }
+
+                  $on_progress->( $len_so_far, $len_total ) if $on_progress;
+               }
+
+               my $len = length $s3data;
+
+               $fh->read( my $localdata, $len );
+
+               if( $localdata ne $s3data ) {
+                  $result ||= "bytes";
+               }
+
+               $len_so_far += $len;
+               $on_progress->( $len_so_far, $len_total ) if $on_progress;
+            },
+         );
+      });
+   } while => sub { return 0; # DEBUG
+      my $f = shift;
+      my ( $failure, $name, $response ) = $f->failure or return 0; # success
+      return 0 if $name and $name eq "http" and
+                  $response and $response->code =~ m/^4/ # don't retry HTTP 4xx
+                            and $response->code != 400;  # but do retry 400 itself because S3 sometimes throws those :/
+      return --$retries;
+   })->then( sub {
+      return Future->new->done( $result );
    });
 }
 
