@@ -344,6 +344,7 @@ sub _start_progress_bulk
       on_tick => sub {
          my $done_bytes = $$completed_bytes_ref;
          my $completed_files = $$completed_files_ref;
+         my $skipped_bytes = $skipped_bytes_ref ? $$skipped_bytes_ref : 0;
 
          my $slotstats = join "", map {
             my ( $s3path, $total, $done ) = @$_;
@@ -358,7 +359,7 @@ sub _start_progress_bulk
          } @$slots;
 
          # Maintain a 30-second time queue of bytes actually transferred (i.e. not skipped)
-         unshift @times, [ $done_bytes - $$skipped_bytes_ref, time ];
+         unshift @times, [ $done_bytes - $skipped_bytes, time ];
          pop @times while @times > 30;
 
          # A reasonable estimtate of data rate is 50% of last second, 30% of last 30 seconds, 20% overall
@@ -1694,6 +1695,7 @@ sub cmd_cmp
       # no delimiter
    )->get;
 
+   my $s3total_bytes = 0;
    my @s3files;
 
    foreach ( @$keys ) {
@@ -1704,6 +1706,7 @@ sub cmd_cmp
       next unless $filter->( $name );
 
       push @s3files, [ $name, $_->{size} ];
+      $s3total_bytes += $_->{size};
    }
 
    # Need both lists of filenames sorted in the same order
@@ -1713,6 +1716,18 @@ sub cmd_cmp
    my $trees_differ; # the sets of files in each root differ
    my $files_differ; # the contents or metadata of files differ
 
+   my $done_files = 0;
+   my $done_bytes = 0;
+
+   my @compares;
+   my $timer;
+
+   # We'll presume that download from S3 is slower than read from local disk, so
+   # display progress in terms of S3 bytes transferred
+   if( $self->{progress} ) {
+      $timer = $self->_start_progress_bulk( \@compares, (scalar @s3files), $s3total_bytes, \$done_files, \$done_bytes, undef );
+   }
+
    ( fmap_void {
       my ( $localent, $s3ent ) = @{$_[0]};
 
@@ -1721,11 +1736,16 @@ sub cmd_cmp
 
       if( !$localent ) {
          $self->print_message( "S3-ONLY    $relpath" );
+         $done_files += 1;
+         $done_bytes += $s3ent->[1];
+         $timer->invoke_event( on_tick => ) if $timer;
+
          $trees_differ++;
          return Future->new->done;
       }
       elsif( !$s3ent ) {
          $self->print_message( "LOCAL-ONLY $relpath" );
+
          $trees_differ++;
          return Future->new->done;
       }
@@ -1737,7 +1757,11 @@ sub cmd_cmp
       my $s3path    = _joinpath( grep { length } $s3root, $relpath );
       my $localpath = _joinpath( $localroot, $relpath );
 
-      $self->cmp_file( $localpath, $s3path )->on_done( sub {
+      push @compares, my $slot = [ $relpath, $s3size, 0 ];
+
+      $self->cmp_file( $localpath, $s3path,
+         on_progress => sub { ( $slot->[2] ) = @_ },
+      )->on_done( sub {
          my ( $diff ) = @_;
 
          if( $diff ) {
@@ -1747,6 +1771,12 @@ sub cmd_cmp
          else {
             $self->print_message( "OK         $relpath" );
          }
+
+         $done_files += 1;
+         $done_bytes += $s3size;
+
+         @compares = grep { $_ != $slot } @compares;
+         $timer->invoke_event( on_tick => ) if $timer;
       });
    } generate => sub {
       # none left - stop
@@ -1762,9 +1792,20 @@ sub cmd_cmp
       return [ shift @localfiles, shift @s3files ];
    }, concurrent => $concurrent )->get;
 
-   return $trees_differ ? 2 :
-          $files_differ ? 1 :
-                          0;
+   $self->remove_child( $timer ) if $timer;
+
+   if( $trees_differ ) {
+      $self->print_message( "All done - trees DIFFER" );
+      return 2;
+   }
+   elsif( $files_differ ) {
+      $self->print_message( "All done - files DIFFER" );
+      return 1;
+   }
+   else {
+      $self->print_message( "All done - no differences found" );
+      return 0;
+   }
 }
 
 1;
