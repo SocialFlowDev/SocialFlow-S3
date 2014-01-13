@@ -14,6 +14,7 @@ my $build = Module::Build->new(
       'IO::Async::Loop' => 0,
       'IO::Async::Timer::Periodic' => 0,
       'IO::Termios' => 0,
+      'List::UtilsBy' => 0,
       'Net::Async::HTTP' => '0.30', # NaWS:S3 needs 0.30
       'Net::Async::Webservice::S3' => '0.17',
       'POSIX::strptime' => 0,

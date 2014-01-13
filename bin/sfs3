@@ -195,6 +195,21 @@ given( shift @ARGV ) {
          only => \@ONLYS, exclude => \@EXCLUDES,
       );
    }
+   when( "cmp" ) {
+      GetOptions(
+         'c|concurrent=i' => \my $CONCURRENT,
+         'only=s'         => \my @ONLYS,
+         'exclude=s'      => \my @EXCLUDES,
+      ) or exit 1;
+      my $s3root = shift @ARGV;
+      my $localroot = shift @ARGV // $s3root;
+
+      my $ret = sfs3()->cmd_cmp( $s3root, $localroot,
+         concurrent => $CONCURRENT,
+         only => \@ONLYS, exclude => \@EXCLUDES,
+      );
+      exit $ret;
+   }
 
    # ll for "low-level" commands; access directly onto the base "filesystem"
    # of S3 rather than data/metadata layer on top. Useful for debugging and

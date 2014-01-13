@@ -20,6 +20,7 @@ use File::Basename qw( dirname );
 use File::Path qw( make_path );
 use IO::Termios;
 use List::Util qw( max sum );
+use List::UtilsBy qw( sort_by );
 use POSIX qw( ceil strftime );
 use POSIX::strptime qw( strptime );
 use Scalar::Util qw( blessed );
@@ -1643,6 +1644,127 @@ sub cmd_pull
          $completed_files, $completed_files - $skipped_files, $skipped_files,
          $completed_bytes, $completed_bytes - $skipped_bytes, $skipped_bytes );
    }
+}
+
+sub cmd_cmp
+{
+   my $self = shift;
+   my ( $s3root, $localroot, %args ) = @_;
+
+   my $concurrent = $args{concurrent} || FILES_AT_ONCE;
+   my $filter = _make_filter_sub( $args{only}, $args{exclude} );
+
+   # Determine the local files first by entirely synchronous operations
+   my @localfiles;
+
+   # BFS by stack
+   my @stack = ( undef );
+   while( @stack ) {
+      my $relpath = shift @stack;
+
+      my $localpath = _joinpath( grep { defined } $localroot, $relpath );
+
+      $self->print_message( "Scanning $localpath..." );
+
+      my @moredirs;
+      foreach ( sort $self->freaddir( path => $localpath ) ) {
+         next if $_ eq "." or $_ eq "..";
+
+         my $ent = _joinpath( grep { defined } $relpath, $_ );
+
+         my ( $type, $size ) = $self->fstat_type_size_mtime( path => "$localroot/$ent" );
+
+         if( $type eq "d" ) {
+            push @moredirs, $ent;
+         }
+         elsif( $type eq "f" ) {
+            next unless $filter->( $ent );
+            push @localfiles, [ $ent, $size ];
+         }
+      }
+
+      unshift @stack, @moredirs;
+   }
+
+   my $s3root_data = _joinpath( "data", $s3root );
+
+   $self->print_message( "Listing files on S3..." );
+   my ( $keys ) = $self->{s3}->list_bucket(
+      prefix => $s3root_data,
+      # no delimiter
+   )->get;
+
+   my @s3files;
+
+   foreach ( @$keys ) {
+      my $name = $_->{key};
+      # Trim "data/$s3root" prefix
+      $name =~ s{^\Q$s3root_data\E/}{};
+
+      next unless $filter->( $name );
+
+      push @s3files, [ $name, $_->{size} ];
+   }
+
+   # Need both lists of filenames sorted in the same order
+   @localfiles = sort_by { $_->[0] } @localfiles;
+   @s3files    = sort_by { $_->[0] } @s3files;
+
+   my $trees_differ; # the sets of files in each root differ
+   my $files_differ; # the contents or metadata of files differ
+
+   ( fmap_void {
+      my ( $localent, $s3ent ) = @{$_[0]};
+
+      # One of these may not exist, but if both do they'll have the same path anyway
+      my $relpath = ( $localent || $s3ent )->[0];
+
+      if( !$localent ) {
+         $self->print_message( "S3-ONLY    $relpath" );
+         $trees_differ++;
+         return Future->new->done;
+      }
+      elsif( !$s3ent ) {
+         $self->print_message( "LOCAL-ONLY $relpath" );
+         $trees_differ++;
+         return Future->new->done;
+      }
+
+      my ( undef, $localsize ) = @$localent;
+      my ( undef, $s3size    ) = @$s3ent;
+
+      # Allow $s3root="" to mean download from root
+      my $s3path    = _joinpath( grep { length } $s3root, $relpath );
+      my $localpath = _joinpath( $localroot, $relpath );
+
+      $self->cmp_file( $localpath, $s3path )->on_done( sub {
+         my ( $diff ) = @_;
+
+         if( $diff ) {
+            $files_differ++;
+            $self->print_message( sprintf "%-10s %s", uc $diff, $relpath );
+         }
+         else {
+            $self->print_message( "OK         $relpath" );
+         }
+      });
+   } generate => sub {
+      # none left - stop
+      return unless @localfiles or @s3files;
+
+      if( !@s3files or $localfiles[0][0] lt $s3files[0][0] ) {
+         return [ shift @localfiles, undef ];
+      }
+      if( !@localfiles or $s3files[0][0] lt $localfiles[0][0] ) {
+         return [ undef, shift @s3files ];
+      }
+
+      return [ shift @localfiles, shift @s3files ];
+   }, concurrent => $concurrent )->get;
+
+   return $trees_differ ? 2 :
+          $files_differ ? 1 :
+                          0;
 }
 
 1;
