@@ -6,8 +6,8 @@ use feature qw( switch );
 use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
-use Future 0.21; # ->then_with_f, ->else_with_f
-use Future::Utils 0.22 qw( try_repeat fmap_scalar fmap_void );
+use Future 0.22; # ->done when cancelled bugfix
+use Future::Utils 0.22 qw( call_with_escape try_repeat fmap_scalar fmap_void );
 use IO::Async::Listener;
 use IO::Async::Process;
 use IO::Async::Stream;
@@ -1100,65 +1100,67 @@ sub cmp_file
    my $delay = 0.5;
    my $retries = $self->{get_retries};
 
-   my $result;
+   call_with_escape {
+      my $escape_f = shift;
 
-   ( try_repeat {
-      my ( $prev_f ) = @_;
+      try_repeat {
+         my ( $prev_f ) = @_;
 
-      # Add a small delay after failure before retrying
-      my $delay_f =
-         $prev_f ? $self->loop->delay_future( after => ( $delay *= 2 ) )
-                 : Future->new->done;
+         # Add a small delay after failure before retrying
+         my $delay_f =
+            $prev_f ? $self->loop->delay_future( after => ( $delay *= 2 ) )
+                    : Future->new->done;
 
-      $delay_f->then( sub {
-         $fh->seek( 0, 0 );
+         $delay_f->then( sub {
+            $fh->seek( 0, 0 );
 
-         $self->_get_file_to_code(
-            $s3path,
-            sub {
-               my ( $header, $s3data, $s3meta ) = @_;
-               return unless defined $s3data;
+            $self->_get_file_to_code(
+               $s3path,
+               sub {
+                  my ( $header, $s3data, $s3meta ) = @_;
+                  return unless defined $s3data;
 
-               if( !defined $len_total ) {
-                  $len_so_far = 0;
-                  $len_total = $header->content_length;
+                  if( !defined $len_total ) {
+                     $len_so_far = 0;
+                     $len_total = $header->content_length;
 
-                  if( $len_total != $locallen ) {
-                     $result ||= "size";
-                  }
-                  if( defined $s3meta->{Mtime} ) {
-                     my $s3mtime = strptime_iso8601( $s3meta->{Mtime} );
-                     if( $s3mtime != $localmtime ) {
-                        $result ||= "mtime";
+                     if( $len_total != $locallen ) {
+                        $escape_f->done( "size" );
+                        return;
                      }
+                     if( defined $s3meta->{Mtime} ) {
+                        my $s3mtime = strptime_iso8601( $s3meta->{Mtime} );
+                        if( $s3mtime != $localmtime ) {
+                           $escape_f->done( "mtime" );
+                           return;
+                        }
+                     }
+
+                     $on_progress->( $len_so_far, $len_total ) if $on_progress;
                   }
 
+                  my $len = length $s3data;
+
+                  $fh->read( my $localdata, $len );
+
+                  if( $localdata ne $s3data ) {
+                     $escape_f->done( "bytes" );
+                  }
+
+                  $len_so_far += $len;
                   $on_progress->( $len_so_far, $len_total ) if $on_progress;
-               }
-
-               my $len = length $s3data;
-
-               $fh->read( my $localdata, $len );
-
-               if( $localdata ne $s3data ) {
-                  $result ||= "bytes";
-               }
-
-               $len_so_far += $len;
-               $on_progress->( $len_so_far, $len_total ) if $on_progress;
-            },
-         );
-      });
-   } while => sub { return 0; # DEBUG
-      my $f = shift;
-      my ( $failure, $name, $response ) = $f->failure or return 0; # success
-      return 0 if $name and $name eq "http" and
-                  $response and $response->code =~ m/^4/ # don't retry HTTP 4xx
-                            and $response->code != 400;  # but do retry 400 itself because S3 sometimes throws those :/
-      return --$retries;
-   })->then( sub {
-      return Future->new->done( $result );
-   });
+               },
+            )->then_done();
+         });
+      } while => sub { return 0; # DEBUG
+         my $f = shift;
+         my ( $failure, $name, $response ) = $f->failure or return 0; # success
+         return 0 if $name and $name eq "http" and
+                     $response and $response->code =~ m/^4/ # don't retry HTTP 4xx
+                               and $response->code != 400;  # but do retry 400 itself because S3 sometimes throws those :/
+         return --$retries;
+      };
+   };
 }
 
 sub delete_file
