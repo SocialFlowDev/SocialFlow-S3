@@ -1160,7 +1160,7 @@ sub cmp_file
                },
             )->then_done();
          });
-      } while => sub { return 0; # DEBUG
+      } while => sub {
          my $f = shift;
          my ( $failure, $name, $response ) = $f->failure or return 0; # success
          return 0 if $name and $name eq "http" and
