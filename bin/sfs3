@@ -82,6 +82,9 @@ Commands:
    pull S3ROOT LOCALROOT
      [--concurrent=N] [--all] [--md5sum] [--only=PATTERN]* [--exclude=PATTERN]*
 
+   cmp S3ROOT LOCALROOT
+     [--concurrent=N] [--only=PATTERN]* [--exclude=PATTERN]*
+
 LOCALFILE may be "-" to get to stdout / put from stdin
 
 Patterns:
