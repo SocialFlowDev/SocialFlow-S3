@@ -4,6 +4,7 @@ use strict;
 use warnings;
 
 use Test::More;
+use Test::Refcount;
 
 use SocialFlow::S3;
 use t::Mocking;
@@ -54,14 +55,17 @@ $s3->EXPECT_head_then_get_object(
 {
    my $got_content = "";
    my $f = $sfs3->_get_file_to_code(
-      "key-1", sub { $got_content .= $_[1] if defined $_[1] }
+      "key-1", my $code = sub { $got_content .= $_[1] if defined $_[1] }
    );
+
+   is_refcount( $code, 2, 'Fetch sub {} has refcount 2 before get' );
 
    $f->get;
 
    no_more_expectations_ok;
 
    is( $got_content, $content, 'content of file' );
+   is_oneref( $code, '_get_file_to_code has not leaked a ref to fetch sub {}' );
 }
 
 # ->get_file
