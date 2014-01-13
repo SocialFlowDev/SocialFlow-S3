@@ -16,6 +16,7 @@ use IO::Async::Loop;
 my $sfs3 = SocialFlow::S3->new(
    s3     => my $s3 = t::MockS3->new,
    bucket => "bucket-name/with-prefix",
+   quiet  => 1,
 );
 ( my $loop = IO::Async::Loop->new )->add( $sfs3 );
 
