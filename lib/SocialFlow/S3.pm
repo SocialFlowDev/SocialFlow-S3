@@ -7,7 +7,7 @@ use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
 use Future 0.21; # ->then_with_f, ->else_with_f
-use Future::Utils qw( try_repeat fmap1 fmap_void );
+use Future::Utils 0.22 qw( try_repeat fmap_scalar fmap_void );
 use IO::Async::Listener;
 use IO::Async::Process;
 use IO::Async::Stream;
@@ -1202,7 +1202,7 @@ sub cmd_ls
 
    my @files;
    if( $LONG ) {
-      @files = ( fmap1 {
+      @files = ( fmap_scalar {
          my $key = $_[0]->{key};
          $self->{s3}->head_object(
             key => $key
