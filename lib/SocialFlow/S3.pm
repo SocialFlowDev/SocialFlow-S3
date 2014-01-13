@@ -997,6 +997,12 @@ sub _get_file_to_code
 
             return $value_f;
          }
+      })->on_ready( sub {
+         # Perls before 5.18 have a bug, wherein the reference cycle between
+         # two nested ANON closures, such as is created above, isn't always
+         # cleaned up properly. We can workaround this by manually breaking
+         # the cycle here
+         undef $on_more;
       })
    )->then( sub {
       my ( $exp_md5sum, undef, $header, $meta ) = @_;
