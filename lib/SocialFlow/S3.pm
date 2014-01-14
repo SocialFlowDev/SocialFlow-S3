@@ -1121,6 +1121,7 @@ sub cmp_file
 
          $delay_f->then( sub {
             $fh->seek( 0, 0 );
+            $len_so_far = 0;
 
             $self->_get_file_to_code(
                $s3path,
