@@ -62,11 +62,14 @@ sub mock_methods_into
 
                my $matcher = $args->{$_};
                my $val     = $args{$_};
-               if( ref $matcher eq "t::Mocking::Matcher" ) {
+               if( !defined $matcher ) {
+                  !defined $val or next EXPECT;
+               }
+               elsif( ref $matcher eq "t::Mocking::Matcher" ) {
                   $matcher->matches( $val ) or next EXPECT;
                }
                else {
-                  $matcher eq $val or next EXPECT
+                  defined $val and $matcher eq $val or next EXPECT
                }
             }
 
