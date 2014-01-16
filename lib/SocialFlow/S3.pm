@@ -6,6 +6,8 @@ use feature qw( switch );
 use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
+warn "DEVEL VERSIONS of NaHTTP, NaWS:S3\n";
+
 use Future 0.22; # ->done when cancelled bugfix
 use Future::Utils 0.22 qw( call_with_escape try_repeat fmap_scalar fmap_void );
 use IO::Async::Listener;
@@ -101,7 +103,7 @@ sub configure
 
    if( my $bucket = delete $args{bucket} ) {
       ( $bucket, my $prefix ) = split m(/), $bucket, 2;
-      $prefix .= "/" unless $prefix =~ m(/$);
+      $prefix .= "/" if defined $prefix and length $prefix and $prefix !~ m(/$);
       $self->{s3}->configure(
          bucket => $bucket,
          prefix => $prefix,
