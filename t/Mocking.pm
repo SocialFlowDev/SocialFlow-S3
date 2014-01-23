@@ -14,6 +14,7 @@ use Carp;
 # A micro expectation-based mocking system
 
 my @expectations; # [] = [$package, $method, \%args, $flags, return]
+my @unexpected;
 
 use constant FLAG_PERSIST => 0x01;
 
@@ -78,15 +79,31 @@ sub mock_methods_into
             return $e->[4]->( %args );
          }
 
-         croak "Unexpected ->$method(" . join( ", ", map { "$_ => '$args{$_}'" } sort keys %args ) . ")";
+         push @unexpected, " ->$method(" . join( ", ", map { "$_ => ".to_qq($args{$_}) } sort keys %args ) . ")\n";
+         croak "Unexpected ->$method";
       };
    }
+}
+
+sub to_qq
+{
+   my ( $v ) = @_;
+   return "undef" if !defined $v;
+   return $v if ref $v;
+   return $v if $v =~ m/^-?\d+$/;
+   return "'$v'";
 }
 
 sub no_more_expectations_ok
 {
    Test::More::ok( !( grep { !($_->[3] & FLAG_PERSIST) } @expectations ),
       'All expected methods were called' );
+
+   if( @unexpected ) {
+      diag( "Unexpected methods: " );
+      diag( "  $_" ) for @unexpected;
+      undef @unexpected;
+   }
 }
 
 require IO::Async::Future;
