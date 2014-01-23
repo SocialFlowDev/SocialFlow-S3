@@ -6,8 +6,6 @@ use feature qw( switch );
 use base qw( IO::Async::Notifier );
 no if $] >= 5.017011, warnings => 'experimental::smartmatch';
 
-warn "DEVEL VERSIONS of NaHTTP, NaWS:S3\n";
-
 use Future 0.22; # ->done when cancelled bugfix
 use Future::Utils 0.22 qw( call_with_escape try_repeat fmap_scalar fmap_void );
 use IO::Async::Listener;
