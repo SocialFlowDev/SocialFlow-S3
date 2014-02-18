@@ -1010,7 +1010,10 @@ sub _get_file_to_code
 
       my $got_md5sum = $md5->hexdigest;
       if( $exp_md5sum ne $got_md5sum ) {
-         die "MD5sum failed for $s3path - expected MD5sum '$exp_md5sum', got '$got_md5sum'\n";
+         return Future->new->fail(
+            "MD5sum failed for $s3path - expected MD5sum '$exp_md5sum', got '$got_md5sum'\n",
+            get_file => md5sum => $exp_md5sum, $got_md5sum,
+         );
       }
 
       Future->new->done( $header, $meta );
