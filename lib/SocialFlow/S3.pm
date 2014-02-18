@@ -1540,7 +1540,7 @@ sub cmd_pull
    my $skip_logic = $args{skip_logic} || "stat";
    my $filter = _make_filter_sub( $args{only}, $args{exclude} );
 
-   my $s3root_data = _joinpath( "data", $s3root );
+   my $s3root_data = _joinpath( "data", length $s3root ? ( $s3root ) : () );
 
    $self->print_message( "Listing files on S3..." );
    my ( $keys ) = $self->{s3}->list_bucket(
@@ -1697,7 +1697,7 @@ sub cmd_cmp
       unshift @stack, @moredirs;
    }
 
-   my $s3root_data = _joinpath( "data", $s3root );
+   my $s3root_data = _joinpath( "data", length $s3root ? ( $s3root ) : () );
 
    $self->print_message( "Listing files on S3..." );
    my ( $keys ) = $self->{s3}->list_bucket(
