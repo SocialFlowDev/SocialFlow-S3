@@ -1818,4 +1818,104 @@ sub cmd_cmp
    }
 }
 
+sub cmd_md5check
+{
+   my $self = shift;
+   my ( $s3root, %args ) = @_;
+
+   # Trim trailing "/";
+   s{/$}{} for $s3root;
+
+   my $concurrent = $args{concurrent} || FILES_AT_ONCE;
+   my $filter = _make_filter_sub( $args{only}, $args{exclude} );
+
+   my $s3root_data = _joinpath( "data", length $s3root ? ( $s3root ) : () );
+
+   $self->print_message( "Listing files on S3..." );
+   my ( $keys ) = $self->{s3}->list_bucket(
+      prefix => $s3root_data,
+      # no delimiter
+   )->get;
+
+   my $total_bytes = 0;
+   my @files;
+
+   foreach ( @$keys ) {
+      my $name = $_->{key};
+
+      # Trim "data/$s3root" prefix
+      $name =~ s{^\Q$s3root_data\E/}{};
+
+      next unless $filter->( $name );
+
+      push @files, [ $name, $_->{size} ];
+      $total_bytes += $_->{size};
+   }
+
+   $self->print_message( sprintf "Found %d files totalling %d bytes (%.1f MiB)",
+      scalar @files, $total_bytes, $total_bytes / (1024*1024) );
+
+   my $completed_files = 0;
+   my $completed_bytes = 0;
+   my $aborted_files   = 0;
+   my $aborted_bytes   = 0;
+
+   my @downloads;
+
+   my $timer;
+   if( $self->{progress} ) {
+      $timer = $self->_start_progress_bulk( \@downloads, scalar @files, $total_bytes, \$completed_files, \$completed_bytes, \0 );
+   }
+
+   ( fmap_void {
+      my ( $relpath, $size ) = @{$_[0]};
+
+      # Allow $s3root="" to mean compare at from root
+      my $s3path = _joinpath( grep { length } $s3root, $relpath );
+
+      $self->print_message( "START $relpath" );
+      push @downloads, my $slot = [ $relpath, $size, 0 ];
+      $timer->invoke_event( on_tick => ) if $timer;
+
+      return $self->_get_file_to_code( $s3path, sub {
+         $slot->[2] += length $_[1] if defined $_[1];
+         return;
+      })->then( sub {
+         Future->new->done( 1 )
+      })->else_with_f( sub {
+         my ( $f, $message, $op, @args ) = @_;
+         return Future->new->done( 0 ) if $op eq "get_file" and $args[0] eq "md5sum";
+         return $f;
+      })->on_done( sub {
+         my ( $ok ) = @_;
+
+         if( $ok ) {
+            $self->print_message( "OK    $relpath" );
+            $completed_files += 1;
+            $completed_bytes += $size;
+         }
+         else {
+            $self->print_message( "BAD   $relpath" );
+            $aborted_files += 1;
+            $aborted_bytes += $size;
+         }
+
+         @downloads = grep { $_ != $slot } @downloads;
+         $timer->invoke_event( on_tick => ) if $timer;
+      });
+   } foreach => \@files,
+     concurrent => $concurrent )->get;
+
+   $self->remove_child( $timer ) if $timer;
+
+   if( $aborted_files ) {
+      $self->print_message( "All done - md5sums DIFFER" );
+      return 1;
+   }
+   else {
+      $self->print_message( "All done - no differences found" );
+      return 0;
+   }
+}
+
 1;

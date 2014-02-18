@@ -85,6 +85,9 @@ Commands:
    cmp S3ROOT LOCALROOT
      [--concurrent=N] [--only=PATTERN]* [--exclude=PATTERN]*
 
+   md5check S3ROOT
+     [--concurrent=N] [--only=PATTERN]* [--exclude=PATTERN]*
+
 LOCALFILE may be "-" to get to stdout / put from stdin
 
 Patterns:
@@ -208,6 +211,20 @@ given( shift @ARGV ) {
       my $localroot = shift @ARGV // $s3root;
 
       my $ret = sfs3()->cmd_cmp( $s3root, $localroot,
+         concurrent => $CONCURRENT,
+         only => \@ONLYS, exclude => \@EXCLUDES,
+      );
+      exit $ret;
+   }
+   when( "md5check" ) {
+      GetOptions(
+         'c|concurrent=i' => \my $CONCURRENT,
+         'only=s'         => \my @ONLYS,
+         'exclude=s'      => \my @EXCLUDES,
+      ) or exit 1;
+      my $s3root = shift @ARGV;
+
+      my $ret = sfs3()->cmd_md5check( $s3root,
          concurrent => $CONCURRENT,
          only => \@ONLYS, exclude => \@EXCLUDES,
       );
