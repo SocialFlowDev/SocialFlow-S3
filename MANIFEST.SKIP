@@ -17,3 +17,5 @@ _build
 ^MYMETA.yml$
 ^MYMETA\.json$
 ^\.git
+^tarballs$
+^tmp$
