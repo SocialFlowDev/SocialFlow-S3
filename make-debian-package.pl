@@ -110,8 +110,8 @@ cpan_dep "List-UtilsBy";
 cpan_dep "Net-Async-HTTP";
 cpan_dep "Net-Async-Webservice-S3";
 cpan_dep "POSIX-strptime";
-cpan_dep "Term-Size";
-cpan_dep "YAML";
+deb_dep "libterm-size-perl";
+deb_dep "libyaml-perl";
 
 run "perl", "Build.PL", "install_base=$PREFIX";
 run "./Build";
