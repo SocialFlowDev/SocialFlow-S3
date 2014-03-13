@@ -20,6 +20,7 @@ delete $ENV{$_} for qw( PERL5LIB PERL_MM_OPT PERL_MB_OPT );
 
 my $VERSION = "0.03+bzr253-0sf1";
 my $PREFIX = "/opt/sfs3";
+my @DEPS = ( "perl (>= 5.14.2)" );
 
 # We'll be building our own deps into $STAGEDIR
 my $stagedir_fq = realpath $STAGEDIR;
@@ -80,9 +81,28 @@ sub cpan_dep
    run "rm", "-rf", "tarballs/$distdir";
 }
 
+sub deb_dep
+{
+   my ( $dep ) = @_;
+   push @DEPS, $dep;
+}
+
 # IO-Async wants this
 cpan_dep "IO-Socket-IP";
 
+# IO-Termios
+deb_dep "libio-pty-perl";
+
+# Net-Async-HTTP
+deb_dep "libhttp-message-perl";
+deb_dep "liburi-perl";
+
+# Net-Async-Webservice-S3
+deb_dep "libdigest-hmac-perl";
+deb_dep "libhttp-date-perl";
+deb_dep "libxml-libxml-perl";
+
+# sfs3 itself wants:
 cpan_dep "Future";
 cpan_dep "IO-Async";
 cpan_dep "IO-Termios";
@@ -120,7 +140,7 @@ Package: sfs3
 Version: $VERSION
 Architecture: all
 Maintainer: Paul Evans <leonerd\@leonerd.org.uk>
-Depends: perl (>= 5.14.2)
+Depends: ${\join ", ", @DEPS}
 Section: perl
 Priority: optional
 Homepage: https://github.com/SocialFlowDev/SocialFlow-S3/
