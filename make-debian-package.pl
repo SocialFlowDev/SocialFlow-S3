@@ -21,6 +21,7 @@ delete $ENV{$_} for qw( PERL5LIB PERL_MM_OPT PERL_MB_OPT );
 my $VERSION = "0.03+bzr253-0sf1";
 my $PREFIX = "/opt/sfs3";
 my @DEPS = ( "perl (>= 5.14.2)" );
+chomp( my $ARCH = `dpkg-architecture -qDEB_HOST_ARCH` );
 
 # We'll be building our own deps into $STAGEDIR
 my $stagedir_fq = realpath $STAGEDIR;
@@ -138,7 +139,7 @@ mkdir $ctrldir unless -d $ctrldir;
 write_file "$ctrldir/control", <<"EOF";
 Package: sfs3
 Version: $VERSION
-Architecture: all
+Architecture: $ARCH
 Maintainer: Paul Evans <leonerd\@leonerd.org.uk>
 Depends: ${\join ", ", @DEPS}
 Section: perl
