@@ -113,7 +113,7 @@ cpan_dep "POSIX-strptime";
 cpan_dep "Term-Size";
 cpan_dep "YAML";
 
-run "perl", "Build.PL", "prefix=$PREFIX";
+run "perl", "Build.PL", "install_base=$PREFIX";
 run "./Build";
 
 # run "./Build", "test"; # TODO - for now t/22gpg.t is failing
