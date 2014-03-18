@@ -18,7 +18,7 @@ mkdir $STAGEDIR;
 
 delete $ENV{$_} for qw( PERL5LIB PERL_MM_OPT PERL_MB_OPT );
 
-my $VERSION = "0.03+bzr253-0sf1";
+my $VERSION = "0.04+bzr259-0sf1";
 my $PREFIX = "/opt/sfs3";
 my @DEPS = ( "perl (>= 5.14.2)" );
 chomp( my $ARCH = `dpkg-architecture -qDEB_HOST_ARCH` );
