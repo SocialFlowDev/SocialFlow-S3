@@ -85,6 +85,11 @@ sub cpan_dep
 sub deb_dep
 {
    my ( $dep ) = @_;
+
+   # dpkg-query --status will exit 0 if the package is installed, or >0 if not
+   IPC::Run::run [ "dpkg-query", "--status", $dep ], undef, \undef or
+      die "Debian dependency '$dep' is not installed\n";
+
    push @DEPS, $dep;
 }
 
