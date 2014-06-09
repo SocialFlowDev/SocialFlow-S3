@@ -113,10 +113,10 @@ cpan_dep "Future";
 cpan_dep "IO-Async";
 cpan_dep "IO-Termios";
 cpan_dep "List-UtilsBy";
+deb_dep "libterm-size-perl";
 cpan_dep "Net-Async-HTTP";
 cpan_dep "Net-Async-Webservice-S3";
 cpan_dep "POSIX-strptime";
-deb_dep "libterm-size-perl";
 deb_dep "libyaml-perl";
 
 run "perl", "Build.PL", "install_base=$PREFIX";
