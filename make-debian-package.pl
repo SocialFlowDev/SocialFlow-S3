@@ -112,6 +112,8 @@ deb_dep "libhttp-date-perl";
 deb_dep "libxml-libxml-perl";
 
 # sfs3 itself wants:
+cpan_dep "Struct-Dumb";
+cpan_dep "Test-Refcount";
 cpan_dep "Future";
 cpan_dep "IO-Async";
 cpan_dep "IO-Termios";
