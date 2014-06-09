@@ -84,17 +84,19 @@ sub cpan_dep
 
 sub deb_dep
 {
-   my ( $dep ) = @_;
+   my ( $dep, %opts ) = @_;
 
    # dpkg-query --status will exit 0 if the package is installed, or >0 if not
    IPC::Run::run [ "dpkg-query", "--status", $dep ], undef, \undef or
       die "Debian dependency '$dep' is not installed\n";
 
-   push @DEPS, $dep;
+   push @DEPS, $dep unless $opts{build_only};
 }
 
 # IO-Async wants this
+deb_dep "libtest-refcount-perl", build_only => 1;
 cpan_dep "IO-Socket-IP";
+cpan_dep "Socket"; # debian's one isn't new enough for us
 
 # IO-Termios
 deb_dep "libio-pty-perl";
@@ -102,6 +104,7 @@ deb_dep "libio-pty-perl";
 # Net-Async-HTTP
 deb_dep "libhttp-message-perl";
 deb_dep "liburi-perl";
+cpan_dep "Struct-Dumb";
 
 # Net-Async-Webservice-S3
 deb_dep "libdigest-hmac-perl";
